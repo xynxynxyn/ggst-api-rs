@@ -1,35 +1,37 @@
 use std::{error, fmt};
 #[derive(Debug)]
-pub enum Error<'a> {
+pub enum Error {
     HttpError(reqwest::Error),
-    UnexpectedResponse,
+    UnexpectedResponse(String),
     ParsingError(serde_json::Error),
-    InvalidCharacterCode(&'a str),
+    InvalidCharacterCode(String),
+    InvalidArguments(String),
 }
 
-pub type Result<'a, T> = std::result::Result<T, Error<'a>>;
+pub type Result<T> = std::result::Result<T, Error>;
 
-impl fmt::Display for Error<'_> {
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::HttpError(e) => write!(f, "Error making request: {}", e),
             Error::ParsingError(e) => write!(f, "Error parsing data: {}", e),
-            Error::UnexpectedResponse => write!(f, "Unexpected response from API"),
+            Error::UnexpectedResponse(e) => write!(f, "Unexpected response from API: {}", e),
             Error::InvalidCharacterCode(code) => write!(f, "{} is not valid character code", code),
+            Error::InvalidArguments(e) => write!(f, "Invalid arguments provided: {}", e),
         }
     }
 }
 
-impl From<reqwest::Error> for Error<'_> {
+impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {
         Error::HttpError(e)
     }
 }
 
-impl From<serde_json::Error> for Error<'_> {
+impl From<serde_json::Error> for Error {
     fn from(e: serde_json::Error) -> Self {
         Error::ParsingError(e)
     }
 }
 
-impl error::Error for Error<'_> {}
+impl error::Error for Error {}

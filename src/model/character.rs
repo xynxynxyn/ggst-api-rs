@@ -1,7 +1,7 @@
 use crate::error::{Error, Result};
 use std::fmt;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Hash, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Character {
     Sol,
     Ky,
@@ -49,6 +49,66 @@ impl fmt::Display for Character {
 }
 
 impl Character {
+    /// Convert a byte into a Character enum.
+    /// 00: Sol 01: Ky 02: May 03: Axl 04: Chipp 05: Pot 06: Faust 07: Millia
+    /// 08: Zato-1 09: Ram 0a: Leo 0b: Nago 0c: Gio 0d: Anji 0e: I-No 0f: Goldlewis 10: Jack-O
+    ///
+    /// See https://github.com/optix2000/totsugeki/issues/35#issuecomment-922516535
+    pub fn from_u8(c: u8) -> Result<Self> {
+        match c {
+            0x00 => Ok(Character::Sol),
+            0x01 => Ok(Character::Ky),
+            0x02 => Ok(Character::May),
+            0x03 => Ok(Character::Axl),
+            0x04 => Ok(Character::Chipp),
+            0x05 => Ok(Character::Potemkin),
+            0x06 => Ok(Character::Faust),
+            0x07 => Ok(Character::Millia),
+            0x08 => Ok(Character::Zato),
+            0x09 => Ok(Character::Ramlethal),
+            0x0a => Ok(Character::Leo),
+            0x0b => Ok(Character::Nagoriyuki),
+            0x0c => Ok(Character::Giovanna),
+            0x0d => Ok(Character::Anji),
+            0x0e => Ok(Character::Ino),
+            0x0f => Ok(Character::Goldlewis),
+            0x10 => Ok(Character::Jacko),
+            0x11 => Ok(Character::HappyChaos),
+            _ => Err(Error::InvalidArguments(format!(
+                "{:x} is not a valid character code",
+                c
+            ))),
+        }
+    }
+
+    /// Convert a Character back to its u8 code
+    /// 00: Sol 01: Ky 02: May 03: Axl 04: Chipp 05: Pot 06: Faust 07: Millia
+    /// 08: Zato-1 09: Ram 0a: Leo 0b: Nago 0c: Gio 0d: Anji 0e: I-No 0f: Goldlewis 10: Jack-O
+    ///
+    /// See https://github.com/optix2000/totsugeki/issues/35#issuecomment-922516535
+    pub fn to_u8(&self) -> u8 {
+        match self {
+            Character::Sol => 0x00,
+            Character::Ky => 0x01,
+            Character::May => 0x02,
+            Character::Axl => 0x03,
+            Character::Chipp => 0x04,
+            Character::Potemkin => 0x05,
+            Character::Faust => 0x06,
+            Character::Millia => 0x07,
+            Character::Zato => 0x08,
+            Character::Ramlethal => 0x09,
+            Character::Leo => 0x0a,
+            Character::Nagoriyuki => 0x0b,
+            Character::Giovanna => 0x0c,
+            Character::Anji => 0x0d,
+            Character::Ino => 0x0e,
+            Character::Goldlewis => 0x0f,
+            Character::Jacko => 0x10,
+            Character::HappyChaos => 0x11,
+        }
+    }
+
     pub fn to_code(&self) -> &'static str {
         match self {
             Character::Sol => "SOL",
@@ -92,7 +152,7 @@ impl Character {
             "GLD" => Ok(Character::Goldlewis),
             "JKO" => Ok(Character::Jacko),
             "COS" => Ok(Character::HappyChaos),
-            _ => Err(Error::InvalidCharacterCode(code)),
+            _ => Err(Error::InvalidCharacterCode(code.into())),
         }
     }
 }
