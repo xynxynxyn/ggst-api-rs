@@ -1,7 +1,4 @@
-use crate::character::Character;
-use crate::error::{Error, Result};
-use crate::model::matches::*;
-use crate::model::user::*;
+use crate::{error::*, *};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use hex::ToHex;
 use lazy_static::lazy_static;
@@ -34,11 +31,14 @@ impl Context {
         Context::default()
     }
 
+    /// Overwrite the url used for api requests. The default is https://ggst-game.guiltygear.com
     pub fn base_url(mut self, base_url: String) -> Self {
         self.base_url = base_url;
         self
     }
 
+    /// Overwrite the url used for requests regarding static content, such as user ids. The default
+    /// is https://ggst-utils-default-rtdb.europe-west1.firebasedatabase.app
     pub fn utils_base_url(mut self, utils_base_url: String) -> Self {
         self.utils_base_url = utils_base_url;
         self
@@ -322,10 +322,11 @@ mod tests {
     #[tokio::test]
     async fn query_replays() {
         let ctx = Context::new();
-        let n_replays = 100;
+        let n_replays = 20;
         let replays = get_replays(&ctx, n_replays, Floor::Celestial, Floor::Celestial)
             .await
             .unwrap();
+        replays.iter().take(10).for_each(|m| println!("{}", m));
         println!("Got {} replays", replays.len());
     }
 }
