@@ -12,6 +12,8 @@ const DEFAULT_UTILS_BASE_URL: &str =
     "https://ggst-utils-default-rtdb.europe-west1.firebasedatabase.app";
 const DEFAULT_BASE_URL: &str = "https://ggst-game.guiltygear.com";
 
+/// Context struct which contains the base urls used for api requests. Use the associated methods
+/// to overwrite urls if necessary.
 pub struct Context {
     base_url: String,
     utils_base_url: String,
@@ -45,6 +47,9 @@ impl Context {
     }
 }
 
+/// Retrieve the latest set of replays. Each page contains approximately 10 replays, however this is not
+/// guaranteed. Indicate the min and maximum floor you want to query.
+/// No more than 100 pages can be queried at a time.
 pub async fn get_replays(
     context: &Context,
     pages: usize,
@@ -55,6 +60,12 @@ pub async fn get_replays(
         return Err(Error::InvalidArguments(format!(
             "pages: {} Cannot query more than 100 pages",
             pages
+        )));
+    }
+    if min_floor > max_floor {
+        return Err(Error::InvalidArguments(format!(
+            "min_floor {:?} is larger than max_floor {:?}",
+            min_floor, max_floor
         )));
     }
 
@@ -276,7 +287,7 @@ pub async fn user_from_steamid(context: &Context, steamid: &str) -> Result<User>
 
     // Assemble the user object
     Ok(User {
-        user_id: id,
+        id,
         name: String::from(
             v.get("NickName")
                 .ok_or(Error::UnexpectedResponse("Could not parse username".into()))?

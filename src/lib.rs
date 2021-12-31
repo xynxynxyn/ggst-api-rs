@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 /// Player information associated with a match
-#[derive(Hash, PartialEq, Eq, Debug)]
+#[derive(Hash, PartialEq, Eq, Debug, Clone)]
 pub struct Player {
     id: String,
     name: String,
@@ -23,7 +23,7 @@ impl fmt::Display for Player {
 }
 
 /// Indicates which player won a match
-#[derive(Hash, PartialEq, Eq, Debug)]
+#[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
 enum Winner {
     Player1,
     Player2,
@@ -31,7 +31,7 @@ enum Winner {
 
 /// A match received by the get_replay API
 /// Use requests::get_replays() to query for replays to get a set of this struct
-#[derive(Hash, PartialEq, Eq, Debug)]
+#[derive(Hash, PartialEq, Eq, Debug, Clone)]
 pub struct Match {
     floor: Floor,
     timestamp: DateTime<Utc>,
@@ -180,6 +180,7 @@ impl Character {
     }
 
     /// Convert the character enum to the code used by the profile API
+    #[allow(dead_code)]
     fn to_code(&self) -> &'static str {
         match self {
             Character::Sol => "SOL",
@@ -204,6 +205,7 @@ impl Character {
     }
 
     /// Convert back to the character enum based on the profile API code representation of it
+    #[allow(dead_code)]
     fn from_code(code: &str) -> Result<Character> {
         match code {
             "SOL" => Ok(Character::Sol),
@@ -230,7 +232,7 @@ impl Character {
 }
 
 /// Enum mapping for floors present in the game
-#[derive(Hash, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(PartialOrd, Ord, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Floor {
     F1,
     F2,
@@ -287,25 +289,38 @@ impl Floor {
     }
 }
 
-#[derive(Clone, Debug)]
+#[allow(dead_code)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
 pub struct MatchStats {
     total: usize,
     wins: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Stats {
+#[allow(dead_code)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
+struct CharacterStats {
     level: usize,
     wins: usize,
 }
 
-#[derive(Clone, Debug)]
+#[allow(dead_code)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct User {
-    user_id: String,
-    name: String,
-    comment: String,
-    floor: Floor,
+    pub id: String,
+    pub name: String,
+    pub comment: String,
+    pub floor: Floor,
     stats: MatchStats,
     celestial_stats: MatchStats,
-    char_stats: HashMap<Character, Stats>,
+    char_stats: HashMap<Character, CharacterStats>,
+}
+
+impl fmt::Display for User {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "User {{\n  {}({}) @ floor {:?}\n  \"{}\"}}",
+            self.name, self.id, self.floor, self.comment
+        )
+    }
 }
