@@ -127,7 +127,13 @@ pub async fn get_replays(
             // Section 3: \x95\xb2{p2_id}\xa_{p2_name}\xb1{p2_some_number}\xaf{p2_online_id}\t{winner}\xb3{timestamp}
 
             // Split the match data on the player separator
-            let mut data = PLAYER_DATA_START.split(raw_match);
+            let mut data = PLAYER_DATA_START
+                .split(raw_match)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .take(3)
+                .rev();
 
             // Section 1
             let (floor, p1_char, p2_char) = match data.next() {
@@ -155,9 +161,12 @@ pub async fn get_replays(
                     // one character for the separator \xa_ and then at least 1 byte for
                     // the username
                     if b.len() < 20 {
-                        return Err(Error::UnexpectedResponse(
-                            "Second data part does not have 20 bytes".into(),
-                        ));
+                        return Err(Error::UnexpectedResponse(format!(
+                            "Second data part does not have 20 bytes, has {} instead: {} in {}",
+                            b.len(),
+                            show_buf(b),
+                            show_buf(raw_match)
+                        )));
                     }
 
                     let name = match b[19..].split(|f| *f == b'\xb1').next() {
@@ -190,9 +199,10 @@ pub async fn get_replays(
                     // instead
                     if b.len() < 71 {
                         return Err(Error::UnexpectedResponse(format!(
-                            "Third data part does not have 71 bytes, has {} instead: {}",
+                            "Third data part does not have 71 bytes, has {} instead: {} in {}",
                             b.len(),
-                            show_buf(b)
+                            show_buf(b),
+                            show_buf(raw_match)
                         )));
                     }
 

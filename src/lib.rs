@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 /// Player information associated with a match
-#[derive(Hash, PartialEq, Eq, Debug, Clone, PartialOrd, Ord)]
+#[derive(Hash, PartialEq, Eq, Clone, Debug, PartialOrd, Ord)]
 pub struct Player {
     id: String,
     name: String,
@@ -18,7 +18,7 @@ pub struct Player {
 
 impl fmt::Display for Player {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}({}) as {}", self.name, self.id, self.character)
+        write!(f, "{} as {}", self.name, self.character)
     }
 }
 
