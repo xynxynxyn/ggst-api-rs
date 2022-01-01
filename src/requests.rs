@@ -3,9 +3,9 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use hex::ToHex;
 use lazy_static::lazy_static;
 use regex::{bytes, Regex};
-use reqwest;
+use reqwest::{self, header};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::str;
 
 const DEFAULT_UTILS_BASE_URL: &str =
@@ -49,13 +49,17 @@ impl Context {
 
 /// Retrieve the latest set of replays. Each page contains approximately 10 replays, however this is not
 /// guaranteed. Indicate the min and maximum floor you want to query.
-/// No more than 100 pages can be queried at a time.
+/// No more than 100 pages can be queried at a time. If no matches can be found the parsing will
+/// fail. Usually a few replays have weird timestamps from the future. It is recommended to apply a
+/// filter on the current time before using any matches, like `.filter(|m| m.timestamp() <
+/// &chrono::Utc::now())`
 pub async fn get_replays(
     context: &Context,
     pages: usize,
     min_floor: Floor,
     max_floor: Floor,
-) -> Result<HashSet<Match>> {
+) -> Result<impl Iterator<Item = Match>> {
+    // Check for invalid inputs
     if pages > 100 {
         return Err(Error::InvalidArguments(format!(
             "pages: {} Cannot query more than 100 pages",
@@ -72,8 +76,10 @@ pub async fn get_replays(
     let request_url = format!("{}/api/catalog/get_replay", context.base_url);
     let client = reqwest::Client::new();
 
-    let mut matches = HashSet::with_capacity(pages * 10);
+    // Assume at most 10 replays per page for pre allocation
+    let mut matches = BTreeSet::new();
     for i in 0..pages {
+        // Construct the query string
         let hex_index = format!("{:02X}", i);
         let query_string = format!(
             "9295B2323131303237313133313233303038333834AD3631613565643466343631633202A5302E302E38039401CC{}0A9AFF00{}{}90FFFF000001",
@@ -82,25 +88,35 @@ pub async fn get_replays(
             max_floor.to_hex());
         let response = client
             .post(&request_url)
+            .header(header::USER_AGENT, "Steam")
+            .header(header::CACHE_CONTROL, "no-cache")
             .form(&[("data", query_string)])
             .send()
             .await?;
 
-        // Parse the response
+        // Regex's to parse the raw bytes received
         lazy_static! {
             // This separates the matches from each other
             static ref MATCH_SEP: bytes::Regex =
-                //bytes::Regex::new(r"(?-u)\xEF\xBF\xBD\xEF\xBF\xBD\x02\xEF\xBF\xBD\x70\xEF\xBF\xBD")
                 bytes::Regex::new(r"(?-u)\x01\x00\x00\x00")
                     .expect("Could not compile regex");
             // The separator which separates data within a match segment
             static ref PLAYER_DATA_START: bytes::Regex = bytes::Regex::new(r"(?-u)\x95\xb2").expect("Could not compile regex");
         }
+
         // Convert the response to raw bytes
         let bytes = response.bytes().await?;
-        // Remove the first 91 bytes, they are static header
-        // They are of no use to us
+
+        // Check if only the header is present
+        // If yes then we found no matches and return early
+        // The function should not fail but rather return an empty set or what was already found
+        if bytes.len() < 63 {
+            return Ok(matches.into_iter());
+        }
+
+        // Remove the first 61 bytes, they are static header, we don't need them
         let bytes = bytes.slice(61..);
+
         // Split on the match separator and keep non empty results only
         // This should give us 10 separate matches
         for raw_match in MATCH_SEP.split(&bytes).filter(|b| !b.is_empty()) {
@@ -113,6 +129,7 @@ pub async fn get_replays(
             // Split the match data on the player separator
             let mut data = PLAYER_DATA_START.split(raw_match);
 
+            // Section 1
             let (floor, p1_char, p2_char) = match data.next() {
                 Some(b) => {
                     let n = b.len();
@@ -130,6 +147,7 @@ pub async fn get_replays(
                 }
             };
 
+            // Section 2
             let (p1_id, p1_name) = match data.next() {
                 Some(b) => {
                     // We check if the array is long enough
@@ -145,9 +163,10 @@ pub async fn get_replays(
                     let name = match b[19..].split(|f| *f == b'\xb1').next() {
                         Some(name_bytes) => String::from_utf8_lossy(name_bytes),
                         None => {
-                            return Err(Error::UnexpectedResponse(
-                                "Could not parse player1 name".into(),
-                            ))
+                            return Err(Error::UnexpectedResponse(format!(
+                                "Could not parse player1 name: {}",
+                                show_buf(&b[19..])
+                            )))
                         }
                     };
                     (String::from_utf8_lossy(&b[0..18]), name)
@@ -159,43 +178,79 @@ pub async fn get_replays(
                 }
             };
 
+            // Section 3
             let (p2_id, p2_name, winner, time) = match data.next() {
                 Some(b) => {
-                    // We check if the array is long enough
-                    // it has to be at least 18 characters for the player user_id
-                    // one character for the separator \xa_ and then at least 1 byte for
-                    // the username
-                    if b.len() < 20 {
-                        return Err(Error::UnexpectedResponse(
-                            "Third data part does not have 20 bytes".into(),
-                        ));
+                    // We check if the array is long enough, 76 characters required for a 1 byte
+                    // username, it has to be at least 76 characters for the player user_id, online_id,
+                    // timestamp, the other number and the winner indicator and separators
+                    // and then at least 1 byte for the username
+                    // There do exist weird edge cases where the third data part does not contain
+                    // an online id, instead it has a dummy user name, this will then take 71 bytes
+                    // instead
+                    if b.len() < 71 {
+                        return Err(Error::UnexpectedResponse(format!(
+                            "Third data part does not have 71 bytes, has {} instead: {}",
+                            b.len(),
+                            show_buf(b)
+                        )));
                     }
 
                     let name = match b[19..].split(|f| *f == b'\xb1').next() {
                         Some(name_bytes) => String::from_utf8_lossy(name_bytes),
                         None => {
-                            return Err(Error::UnexpectedResponse(
-                                "Could not parse player2 name".into(),
-                            ))
+                            return Err(Error::UnexpectedResponse(format!(
+                                "Could not parse player2 name: {}",
+                                show_buf(&b[19..])
+                            )))
                         }
                     };
 
-                    let (winner, time) = match b[19..].split(|f| *f == b'\t').nth(1) {
+                    // first 38 bytes are unnecessary as they contain the username and id's
+                    // \xb3 is in front of the timestamp, so we split the bytes on that and take
+                    // the last two segements, which should be the winner and timestamp
+                    // This can break if there are more bytes behind the timestamp that contain the
+                    // \xb3 byte
+                    let winner_time_bytes = b[38..]
+                        .split(|f| *f == b'\xb3')
+                        .rev()
+                        .take(2)
+                        .collect::<Vec<_>>();
+                    let time = match winner_time_bytes.get(0) {
                         Some(bytes) => {
+                            // 16 bytes before the relevant section
                             // We need 1 byte for the winner, 1 byte for the separator and 19 bytes
                             // for the timestamp
-                            if bytes.len() < 21 {
-                                return Err(Error::UnexpectedResponse(
-                                    "Not enough bytes to parse winner and timestamp bytes".into(),
-                                ));
+                            if bytes.len() < 19 {
+                                return Err(Error::UnexpectedResponse(format!(
+                                    "Not enough bytes to parse timestamp: {}",
+                                    show_buf(&b[38..])
+                                )));
                             }
-
-                            (bytes[0], String::from_utf8_lossy(&bytes[2..21]))
+                            String::from_utf8_lossy(&bytes[0..19])
                         }
                         None => {
-                            return Err(Error::UnexpectedResponse(
-                                "Could not parse winner and timestamp".into(),
-                            ))
+                            return Err(Error::UnexpectedResponse(format!(
+                                "Could not split bytes to parse winner and timestamp: {}",
+                                show_buf(&b[38..])
+                            )))
+                        }
+                    };
+                    let winner = match winner_time_bytes.get(1) {
+                        Some(bytes) => match bytes.last() {
+                            None => {
+                                return Err(Error::UnexpectedResponse(format!(
+                                    "Could not find winner in bytes: {}",
+                                    show_buf(&b[38..])
+                                )))
+                            }
+                            Some(b) => b,
+                        },
+                        None => {
+                            return Err(Error::UnexpectedResponse(format!(
+                                "Could not split bytes to parse winner: {}",
+                                show_buf(&b[38..])
+                            )))
                         }
                     };
                     (String::from_utf8_lossy(&b[0..18]), name, winner, time)
@@ -207,6 +262,7 @@ pub async fn get_replays(
                 }
             };
 
+            // Construct the match
             let match_data = Match {
                 floor: Floor::from_u8(floor)?,
                 timestamp: match NaiveDateTime::parse_from_str(&time, "%Y-%m-%d %H:%M:%S") {
@@ -241,10 +297,12 @@ pub async fn get_replays(
                     }
                 },
             };
+
+            // Insert it into the set
             matches.insert(match_data);
         }
     }
-    Ok(matches)
+    Ok(matches.into_iter())
 }
 
 async fn userid_from_steamid(context: &Context, steamid: &str) -> Result<String> {
@@ -260,6 +318,7 @@ async fn userid_from_steamid(context: &Context, steamid: &str) -> Result<String>
     }
 }
 
+/// Receive user data from a steamid
 pub async fn user_from_steamid(context: &Context, steamid: &str) -> Result<User> {
     // Get the user id from the steamid
     let id = userid_from_steamid(context, steamid).await?;
@@ -311,6 +370,19 @@ pub async fn user_from_steamid(context: &Context, steamid: &str) -> Result<User>
     })
 }
 
+// Helper function for debugging
+fn show_buf<B: AsRef<[u8]>>(buf: B) -> String {
+    use std::ascii::escape_default;
+    String::from_utf8(
+        buf.as_ref()
+            .iter()
+            .map(|b| escape_default(*b))
+            .flatten()
+            .collect(),
+    )
+    .unwrap()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,11 +405,16 @@ mod tests {
     #[tokio::test]
     async fn query_replays() {
         let ctx = Context::new();
-        let n_replays = 20;
-        let replays = get_replays(&ctx, n_replays, Floor::Celestial, Floor::Celestial)
+        let n_replays = 100;
+        let replays = get_replays(&ctx, n_replays, Floor::F1, Floor::Celestial)
             .await
-            .unwrap();
-        replays.iter().take(10).for_each(|m| println!("{}", m));
+            .unwrap()
+            .filter(|m| m.timestamp() < &Utc::now())
+            .collect::<Vec<_>>();
         println!("Got {} replays", replays.len());
+        if replays.len() > 1 {
+            println!("Oldest replay: {}", replays.first().unwrap());
+            println!("Latest replay: {}", replays.last().unwrap());
+        }
     }
 }

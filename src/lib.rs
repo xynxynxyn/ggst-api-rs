@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 /// Player information associated with a match
-#[derive(Hash, PartialEq, Eq, Debug, Clone)]
+#[derive(Hash, PartialEq, Eq, Debug, Clone, PartialOrd, Ord)]
 pub struct Player {
     id: String,
     name: String,
@@ -23,7 +23,7 @@ impl fmt::Display for Player {
 }
 
 /// Indicates which player won a match
-#[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
+#[derive(Hash, PartialEq, Eq, Debug, Clone, Copy, PartialOrd, Ord)]
 enum Winner {
     Player1,
     Player2,
@@ -31,15 +31,27 @@ enum Winner {
 
 /// A match received by the get_replay API
 /// Use requests::get_replays() to query for replays to get a set of this struct
-#[derive(Hash, PartialEq, Eq, Debug, Clone)]
+#[derive(Hash, PartialEq, Eq, Debug, Clone, PartialOrd, Ord)]
 pub struct Match {
-    floor: Floor,
     timestamp: DateTime<Utc>,
+    floor: Floor,
     players: (Player, Player),
     winner: Winner,
 }
 
 impl Match {
+    pub fn floor(&self) -> &Floor {
+        &self.floor
+    }
+
+    pub fn timestamp(&self) -> &DateTime<Utc> {
+        &self.timestamp
+    }
+
+    pub fn players(&self) -> (&Player, &Player) {
+        (&self.players.0, &self.players.1)
+    }
+
     /// Get the player information about the winner
     pub fn winner(&self) -> &Player {
         match self.winner {
@@ -61,9 +73,9 @@ impl fmt::Display for Match {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Match {} on floor {:?} {{\n  Winner: {}\n  Loser: {}\n}}",
-            self.timestamp,
-            self.floor,
+            "{} on floor {:?} {{\n  Winner: {}\n  Loser: {}\n}}",
+            self.timestamp(),
+            self.floor(),
             self.winner(),
             self.loser()
         )
@@ -71,7 +83,7 @@ impl fmt::Display for Match {
 }
 
 /// Enum for characters in the game
-#[derive(Hash, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Hash, Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub enum Character {
     Sol,
     Ky,
@@ -253,16 +265,16 @@ impl Floor {
     /// See https://github.com/optix2000/totsugeki/issues/35#issuecomment-922516535 for mapping
     fn from_u8(c: u8) -> Result<Self> {
         match c {
-            0x00 => Ok(Floor::F1),
-            0x01 => Ok(Floor::F2),
-            0x02 => Ok(Floor::F3),
-            0x03 => Ok(Floor::F4),
-            0x04 => Ok(Floor::F5),
-            0x05 => Ok(Floor::F6),
-            0x06 => Ok(Floor::F7),
-            0x07 => Ok(Floor::F8),
-            0x08 => Ok(Floor::F9),
-            0x09 => Ok(Floor::F10),
+            0x01 => Ok(Floor::F1),
+            0x02 => Ok(Floor::F2),
+            0x03 => Ok(Floor::F3),
+            0x04 => Ok(Floor::F4),
+            0x05 => Ok(Floor::F5),
+            0x06 => Ok(Floor::F6),
+            0x07 => Ok(Floor::F7),
+            0x08 => Ok(Floor::F8),
+            0x09 => Ok(Floor::F9),
+            0x0a => Ok(Floor::F10),
             0x63 => Ok(Floor::Celestial),
             _ => Err(Error::InvalidArguments(format!(
                 "{:x} is not a valid floor code",
@@ -274,15 +286,15 @@ impl Floor {
     /// Similar to to_u8() but it directly returns its string representation for url building
     fn to_hex(&self) -> String {
         match self {
-            Floor::F1 => "00".into(),
-            Floor::F2 => "01".into(),
-            Floor::F3 => "02".into(),
-            Floor::F4 => "03".into(),
-            Floor::F5 => "04".into(),
-            Floor::F6 => "05".into(),
-            Floor::F7 => "06".into(),
-            Floor::F8 => "07".into(),
-            Floor::F9 => "08".into(),
+            Floor::F1 => "01".into(),
+            Floor::F2 => "02".into(),
+            Floor::F3 => "03".into(),
+            Floor::F4 => "04".into(),
+            Floor::F5 => "05".into(),
+            Floor::F6 => "06".into(),
+            Floor::F7 => "07".into(),
+            Floor::F8 => "08".into(),
+            Floor::F9 => "09".into(),
             Floor::F10 => "0a".into(),
             Floor::Celestial => "63".into(),
         }
