@@ -9,7 +9,11 @@ edition = "2021"
 reqwest = { version = "0.11", features = ["json"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
-hex = "0.4"
 regex = "1.5"
 lazy_static = "1.4.0"
 chrono = "0.4"
+
+[features]
+# If this feature is set errors during api request parsing are logged to stderr instead of being
+# forwarded
+log_errors = []

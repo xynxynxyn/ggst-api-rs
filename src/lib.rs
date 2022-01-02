@@ -158,7 +158,7 @@ impl Character {
     /// 08: Zato-1 09: Ram 0a: Leo 0b: Nago 0c: Gio 0d: Anji 0e: I-No 0f: Goldlewis 10: Jack-O
     ///
     /// See https://github.com/optix2000/totsugeki/issues/35#issuecomment-922516535
-    pub fn from_u8(c: u8) -> Result<'static, Self> {
+    pub fn from_u8(c: u8) -> Result<Self> {
         match c {
             0x00 => Ok(Character::Sol),
             0x01 => Ok(Character::Ky),
@@ -234,7 +234,7 @@ impl Floor {
     /// Create a floor from a byte representation
     ///
     /// See https://github.com/optix2000/totsugeki/issues/35#issuecomment-922516535 for mapping
-    fn from_u8(c: u8) -> Result<'static, Self> {
+    fn from_u8(c: u8) -> Result<Self> {
         match c {
             0x01 => Ok(Floor::F1),
             0x02 => Ok(Floor::F2),

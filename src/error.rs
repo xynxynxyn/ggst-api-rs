@@ -1,19 +1,19 @@
 use std::{error, fmt};
 #[derive(Debug)]
-pub enum Error<'a> {
+pub enum Error {
     ReqwestError(reqwest::Error),
     SerdeError(serde_json::Error),
     ChronoParseError(chrono::ParseError),
-    ParsingBytesError(String, &'a str),
-    UnexpectedResponse(String, &'a str),
-    InvalidCharacterCode(&'a str),
+    ParsingBytesError(String, &'static str),
+    UnexpectedResponse(String, &'static str),
+    InvalidCharacterCode(&'static str),
     InvalidArgument(String),
     JsonParsingError(serde_json::Value),
 }
 
-pub type Result<'a, T> = std::result::Result<T, Error<'a>>;
+pub type Result<T> = std::result::Result<T, Error>;
 
-impl fmt::Display for Error<'_> {
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::ReqwestError(e) => write!(f, "Error making request: {}", e),
@@ -30,22 +30,22 @@ impl fmt::Display for Error<'_> {
     }
 }
 
-impl From<reqwest::Error> for Error<'_> {
+impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {
         Error::ReqwestError(e)
     }
 }
 
-impl From<serde_json::Error> for Error<'_> {
+impl From<serde_json::Error> for Error {
     fn from(e: serde_json::Error) -> Self {
         Error::SerdeError(e)
     }
 }
 
-impl From<chrono::ParseError> for Error<'_> {
+impl From<chrono::ParseError> for Error {
     fn from(e: chrono::ParseError) -> Self {
         Error::ChronoParseError(e)
     }
 }
 
-impl error::Error for Error<'_> {}
+impl error::Error for Error {}

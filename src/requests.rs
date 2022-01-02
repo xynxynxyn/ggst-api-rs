@@ -35,7 +35,7 @@ impl Context {
     }
 }
 
-fn id_from_bytes(bytes: &[u8]) -> Result<'_, u64> {
+fn id_from_bytes(bytes: &[u8]) -> Result<u64> {
     let s = str::from_utf8(bytes)
         .map_err(|_| Error::ParsingBytesError(show_buf(bytes), "could not parse userid"))?;
     Ok(u64::from_str_radix(s, 10)
@@ -53,7 +53,7 @@ pub async fn get_replays(
     pages: usize,
     min_floor: Floor,
     max_floor: Floor,
-) -> Result<'_, impl Iterator<Item = Match>> {
+) -> Result<impl Iterator<Item = Match>> {
     // Check for invalid inputs
     if pages > 100 {
         return Err(Error::InvalidArgument(format!(
@@ -119,7 +119,10 @@ pub async fn get_replays(
                     matches.insert(m);
                 }
                 Err(e) => {
+                    #[cfg(feature = "log_errors")]
                     eprintln!("{}", e);
+                    #[cfg(not(feature = "log_errors"))]
+                    return Err(e);
                 }
             };
         }
@@ -127,7 +130,7 @@ pub async fn get_replays(
     Ok(matches.into_iter())
 }
 
-fn parse_match(raw_match: &[u8]) -> Result<'_, Match> {
+fn parse_match(raw_match: &[u8]) -> Result<Match> {
     // The separator which separates data within a match segment
     lazy_static! {
         static ref PLAYER_DATA_START: bytes::Regex =
