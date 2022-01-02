@@ -3,22 +3,45 @@ pub mod requests;
 
 use chrono::prelude::*;
 use error::*;
-// Reexport the functions and structs from requests.rs
-pub use requests::*;
 use std::collections::HashMap;
 use std::fmt;
 
+// Reexport the functions and structs from requests.rs
+pub use requests::*;
+
 /// Player information associated with a match
-#[derive(Hash, PartialEq, Eq, Clone, Debug, PartialOrd, Ord)]
+#[derive(Hash, Clone, Debug, PartialOrd, Ord)]
 pub struct Player {
     id: u64,
-    name: String,
     character: Character,
+    name: String,
 }
+
+impl PartialEq for Player {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.character == other.character
+    }
+}
+
+impl Eq for Player {}
 
 impl fmt::Display for Player {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} as {}", self.name, self.character)
+    }
+}
+
+impl Player {
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn character(&self) -> Character {
+        self.character
     }
 }
 
