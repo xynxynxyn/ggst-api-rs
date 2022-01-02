@@ -11,8 +11,3 @@ tokio = { version = "1", features = ["full"] }
 regex = "1.5"
 lazy_static = "1.4.0"
 chrono = "0.4"
-
-[features]
-# If this feature is set errors during api request parsing are logged to stderr instead of being
-# forwarded
-log_errors = []

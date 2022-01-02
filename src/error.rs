@@ -1,10 +1,13 @@
-use std::{error, fmt};
+use std::{
+    error,
+    fmt::{self, Display},
+};
 #[derive(Debug)]
 pub enum Error {
     ReqwestError(reqwest::Error),
     ChronoParseError(chrono::ParseError),
-    ParsingBytesError(String, &'static str),
-    UnexpectedResponse(String, &'static str),
+    ParsingBytesError(&'static str),
+    UnexpectedResponse(&'static str),
     InvalidCharacterCode(&'static str),
     InvalidArgument(String),
 }
@@ -16,9 +19,9 @@ impl fmt::Display for Error {
         match self {
             Error::ReqwestError(e) => write!(f, "Error making request: {}", e),
             Error::ChronoParseError(e) => write!(f, "Error parsing datetime: {}", e),
-            Error::ParsingBytesError(bytes, msg) => write!(f, "{}: {}", msg, bytes),
-            Error::UnexpectedResponse(bytes, msg) => {
-                write!(f, "Unexpected response from API, {}: {}", msg, bytes)
+            Error::ParsingBytesError(msg) => write!(f, "{}", msg),
+            Error::UnexpectedResponse(msg) => {
+                write!(f, "Unexpected response from API, {}", msg)
             }
             Error::InvalidCharacterCode(code) => write!(f, "{} is not valid character code", code),
             Error::InvalidArgument(msg) => write!(f, "Invalid argument: {}", msg),
@@ -39,3 +42,30 @@ impl From<chrono::ParseError> for Error {
 }
 
 impl error::Error for Error {}
+
+#[derive(Debug)]
+pub struct ParseError {
+    reply_content: String,
+    inner: Error,
+}
+
+impl ParseError {
+    pub fn new(reply_content: String, inner: Error) -> Self {
+        ParseError {
+            reply_content,
+            inner,
+        }
+    }
+}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Could not parse replay: {}\n  bytes: {}",
+            self.inner, self.reply_content
+        )
+    }
+}
+
+impl error::Error for ParseError {}

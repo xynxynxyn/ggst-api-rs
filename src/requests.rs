@@ -36,10 +36,10 @@ impl Context {
 }
 
 fn id_from_bytes(bytes: &[u8]) -> Result<u64> {
-    let s = str::from_utf8(bytes)
-        .map_err(|_| Error::ParsingBytesError(show_buf(bytes), "could not parse userid"))?;
+    let s =
+        str::from_utf8(bytes).map_err(|_| Error::ParsingBytesError("could not parse userid"))?;
     Ok(u64::from_str_radix(s, 10)
-        .map_err(|_| Error::ParsingBytesError(s.into(), "could not parse userid from String"))?)
+        .map_err(|_| Error::ParsingBytesError("could not parse userid from String"))?)
 }
 
 /// Retrieve the latest set of replays. Each page contains approximately 10 replays, however this is not
@@ -53,7 +53,10 @@ pub async fn get_replays(
     pages: usize,
     min_floor: Floor,
     max_floor: Floor,
-) -> Result<impl Iterator<Item = Match>> {
+) -> Result<(
+    impl Iterator<Item = Match>,
+    impl Iterator<Item = ParseError>,
+)> {
     // Check for invalid inputs
     if pages > 100 {
         return Err(Error::InvalidArgument(format!(
@@ -73,6 +76,7 @@ pub async fn get_replays(
 
     // Assume at most 10 replays per page for pre allocation
     let mut matches = BTreeSet::new();
+    let mut errors = vec![];
     for i in 0..pages {
         // Construct the query string
         let hex_index = format!("{:02X}", i);
@@ -104,7 +108,7 @@ pub async fn get_replays(
         // If yes then we found no matches and return early
         // The function should not fail but rather return an empty set or what was already found
         if bytes.len() < 63 {
-            return Ok(matches.into_iter());
+            return Ok((matches.into_iter(), errors.into_iter()));
         }
 
         // Remove the first 61 bytes, they are static header, we don't need them
@@ -119,15 +123,12 @@ pub async fn get_replays(
                     matches.insert(m);
                 }
                 Err(e) => {
-                    #[cfg(feature = "log_errors")]
-                    eprintln!("{}", e);
-                    #[cfg(not(feature = "log_errors"))]
-                    return Err(e);
+                    errors.push(ParseError::new(show_buf(raw_match), e));
                 }
             };
         }
     }
-    Ok(matches.into_iter())
+    Ok((matches.into_iter(), errors.into_iter()))
 }
 
 fn parse_match(raw_match: &[u8]) -> Result<Match> {
@@ -157,7 +158,6 @@ fn parse_match(raw_match: &[u8]) -> Result<Match> {
             let n = b.len();
             if n < 3 {
                 return Err(Error::UnexpectedResponse(
-                    show_buf(&raw_match),
                     "first data part does not have 3 bytes",
                 ));
             }
@@ -165,7 +165,6 @@ fn parse_match(raw_match: &[u8]) -> Result<Match> {
         }
         None => {
             return Err(Error::UnexpectedResponse(
-                show_buf(&raw_match),
                 "could not find first data part of response",
             ))
         }
@@ -180,25 +179,18 @@ fn parse_match(raw_match: &[u8]) -> Result<Match> {
             // the username
             if b.len() < 20 {
                 return Err(Error::UnexpectedResponse(
-                    show_buf(&raw_match),
                     "second data part does not have 20 bytes",
                 ));
             }
 
             let name = match b[19..].split(|f| *f == b'\xb1').next() {
                 Some(name_bytes) => String::from_utf8_lossy(name_bytes),
-                None => {
-                    return Err(Error::UnexpectedResponse(
-                        show_buf(&raw_match),
-                        "could not parse player1 name",
-                    ))
-                }
+                None => return Err(Error::UnexpectedResponse("could not parse player1 name")),
             };
             (id_from_bytes(&b[0..18])?, name)
         }
         None => {
             return Err(Error::UnexpectedResponse(
-                show_buf(&raw_match),
                 "could not find second data part of response",
             ))
         }
@@ -216,19 +208,13 @@ fn parse_match(raw_match: &[u8]) -> Result<Match> {
             // instead
             if b.len() < 71 {
                 return Err(Error::UnexpectedResponse(
-                    show_buf(&raw_match),
                     "third data part does not have 71 bytes",
                 ));
             }
 
             let name = match b[19..].split(|f| *f == b'\xb1').next() {
                 Some(name_bytes) => String::from_utf8_lossy(name_bytes),
-                None => {
-                    return Err(Error::UnexpectedResponse(
-                        show_buf(&raw_match),
-                        "could not find player2 name",
-                    ))
-                }
+                None => return Err(Error::UnexpectedResponse("could not find player2 name")),
             };
 
             // first 38 bytes are unnecessary as they contain the username and id's
@@ -248,7 +234,6 @@ fn parse_match(raw_match: &[u8]) -> Result<Match> {
                     // for the timestamp
                     if b.len() < 19 {
                         return Err(Error::UnexpectedResponse(
-                            show_buf(&raw_match),
                             "not enough bytes to parse timestamp",
                         ));
                     }
@@ -256,7 +241,6 @@ fn parse_match(raw_match: &[u8]) -> Result<Match> {
                 }
                 None => {
                     return Err(Error::UnexpectedResponse(
-                        show_buf(&raw_match),
                         "could not split bytes to parse winner and timestamp",
                     ))
                 }
@@ -264,16 +248,12 @@ fn parse_match(raw_match: &[u8]) -> Result<Match> {
             let winner = match winner_time_bytes.get(1) {
                 Some(b) => match b.last() {
                     None => {
-                        return Err(Error::UnexpectedResponse(
-                            show_buf(&raw_match),
-                            "could not find winner in bytes",
-                        ))
+                        return Err(Error::UnexpectedResponse("could not find winner in bytes"))
                     }
                     Some(b) => b,
                 },
                 None => {
                     return Err(Error::UnexpectedResponse(
-                        show_buf(&raw_match),
                         "could not split bytes to parse winner",
                     ))
                 }
@@ -283,7 +263,6 @@ fn parse_match(raw_match: &[u8]) -> Result<Match> {
         }
         None => {
             return Err(Error::UnexpectedResponse(
-                show_buf(&raw_match),
                 "could not find third data part of match",
             ))
         }
@@ -311,12 +290,7 @@ fn parse_match(raw_match: &[u8]) -> Result<Match> {
         winner: match winner {
             1 => Winner::Player1,
             2 => Winner::Player2,
-            _ => {
-                return Err(Error::ParsingBytesError(
-                    show_buf(&raw_match),
-                    "Could not parse winner",
-                ))
-            }
+            _ => return Err(Error::ParsingBytesError("Could not parse winner")),
         },
     };
 
@@ -343,9 +317,10 @@ mod tests {
     async fn query_replays() {
         let ctx = Context::new();
         let n_replays = 100;
-        let replays = get_replays(&ctx, n_replays, Floor::F1, Floor::Celestial)
+        let (replays, errors) = get_replays(&ctx, n_replays, Floor::F1, Floor::Celestial)
             .await
-            .unwrap()
+            .unwrap();
+        let replays = replays
             .filter(|m| m.timestamp() < &Utc::now())
             .collect::<Vec<_>>();
         println!("Got {} replays", replays.len());
@@ -353,5 +328,8 @@ mod tests {
             println!("Oldest replay: {}", replays.first().unwrap());
             println!("Latest replay: {}", replays.last().unwrap());
         }
+
+        println!("Errors:");
+        errors.for_each(|e| eprintln!("{}", e));
     }
 }
