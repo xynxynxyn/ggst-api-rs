@@ -286,12 +286,22 @@ pub async fn get_replays(
                 },
                 players: (
                     Player {
-                        id: p1_id.to_string(),
+                        id: u64::from_str_radix(&p1_id, 10).map_err(|_| {
+                            Error::UnexpectedResponse(format!(
+                                "Could not parse u64 id from {}",
+                                p1_id
+                            ))
+                        })?,
                         name: p1_name.to_string(),
                         character: Character::from_u8(p1_char)?,
                     },
                     Player {
-                        id: p2_id.to_string(),
+                        id: u64::from_str_radix(&p2_id, 10).map_err(|_| {
+                            Error::UnexpectedResponse(format!(
+                                "Could not parse u64 id from {}",
+                                p2_id
+                            ))
+                        })?,
                         name: p2_name.to_string(),
                         character: Character::from_u8(p2_char)?,
                     },

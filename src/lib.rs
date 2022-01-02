@@ -11,7 +11,7 @@ use std::fmt;
 /// Player information associated with a match
 #[derive(Hash, PartialEq, Eq, Clone, Debug, PartialOrd, Ord)]
 pub struct Player {
-    id: String,
+    id: u64,
     name: String,
     character: Character,
 }
