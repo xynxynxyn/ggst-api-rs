@@ -1,29 +1,23 @@
 use crate::{error::*, *};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use hex::ToHex;
 use lazy_static::lazy_static;
-use regex::{bytes, Regex};
+use regex::bytes;
 use reqwest::{self, header};
-use serde_json::Value;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::str;
 
-const DEFAULT_UTILS_BASE_URL: &str =
-    "https://ggst-utils-default-rtdb.europe-west1.firebasedatabase.app";
 const DEFAULT_BASE_URL: &str = "https://ggst-game.guiltygear.com";
 
 /// Context struct which contains the base urls used for api requests. Use the associated methods
 /// to overwrite urls if necessary.
 pub struct Context {
     base_url: String,
-    utils_base_url: String,
 }
 
 impl Default for Context {
     fn default() -> Self {
         Context {
             base_url: DEFAULT_BASE_URL.to_string(),
-            utils_base_url: DEFAULT_UTILS_BASE_URL.to_string(),
         }
     }
 }
@@ -34,15 +28,9 @@ impl Context {
     }
 
     /// Overwrite the url used for api requests. The default is https://ggst-game.guiltygear.com
+    /// You can modify this to a proxy in your area for faster requests
     pub fn base_url(mut self, base_url: String) -> Self {
         self.base_url = base_url;
-        self
-    }
-
-    /// Overwrite the url used for requests regarding static content, such as user ids. The default
-    /// is https://ggst-utils-default-rtdb.europe-west1.firebasedatabase.app
-    pub fn utils_base_url(mut self, utils_base_url: String) -> Self {
-        self.utils_base_url = utils_base_url;
         self
     }
 }
@@ -332,66 +320,6 @@ fn parse_match(raw_match: &[u8]) -> Result<'_, Match> {
     Ok(m)
 }
 
-async fn userid_from_steamid<'a>(context: &'a Context, steamid: &'a str) -> Result<'a, String> {
-    let request_url = format!("{}/{}.json", context.utils_base_url, steamid);
-    let response = reqwest::get(request_url).await?;
-    let d: Value = serde_json::from_str(&response.text().await?)?;
-    match d.get("UserID") {
-        Some(s) => Ok(String::from(
-            s.as_str().ok_or(Error::JsonParsingError(d.clone()))?,
-        )),
-        None => Err(Error::JsonParsingError(d.clone())),
-    }
-}
-
-/// Receive user data from a steamid
-pub async fn user_from_steamid<'a>(context: &'a Context, steamid: &'a str) -> Result<'a, User> {
-    // Get the user id from the steamid
-    let id = userid_from_steamid(context, steamid).await?;
-
-    // Construct the request with token and appropriate AOB
-    let request_url = format!("{}/api/statistics/get", context.base_url);
-    let client = reqwest::Client::new();
-    let query = format!(
-        "9295B2323131303237313133313233303038333834AD3631393064363236383739373702A5302E302E380396B2{}070101FFFFFF",
-        id.encode_hex::<String>()
-    );
-    let response = client
-        .post(request_url)
-        .form(&[("data", query)])
-        .send()
-        .await?;
-
-    // Remove invalid unicode stuff before the actual json body
-    let content = &response.text().await?;
-    lazy_static! {
-        static ref RE: Regex = Regex::new(r"[^\{]*\{").expect("Could not compile regex");
-    }
-    let content = RE.replacen(content, 1, "{");
-    let v: Value = serde_json::from_str(&content)?;
-    let name = v
-        .get("NickName")
-        .ok_or(Error::JsonParsingError(v.clone()))?
-        .as_str()
-        .ok_or(Error::JsonParsingError(v.clone()))?;
-    let comment = v
-        .get("PublicComment")
-        .ok_or(Error::JsonParsingError(v.clone()))?
-        .as_str()
-        .ok_or(Error::JsonParsingError(v.clone()))?;
-
-    // Assemble the user object
-    Ok(User {
-        id,
-        name: String::from(name),
-        comment: String::from(comment),
-        floor: Floor::Celestial,
-        stats: MatchStats { total: 0, wins: 0 },
-        celestial_stats: MatchStats { total: 0, wins: 0 },
-        char_stats: HashMap::new(),
-    })
-}
-
 // Helper function for constructing error messages to avoid issues with the borrow checker
 fn show_buf<B: AsRef<[u8]>>(buf: B) -> String {
     use std::ascii::escape_default;
@@ -408,22 +336,6 @@ fn show_buf<B: AsRef<[u8]>>(buf: B) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[tokio::test]
-    async fn get_userid() {
-        let ctx = Context::new();
-        let id = userid_from_steamid(&ctx, "76561198045733267")
-            .await
-            .unwrap();
-        assert_eq!(id, "210611132841904307");
-    }
-
-    #[tokio::test]
-    async fn get_user_stats() {
-        let ctx = Context::new();
-        let user = user_from_steamid(&ctx, "76561198045733267").await.unwrap();
-        assert_eq!(user.name, "enemy fungus");
-    }
-
     #[tokio::test]
     async fn query_replays() {
         let ctx = Context::new();

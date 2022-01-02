@@ -3,7 +3,6 @@ pub mod requests;
 
 use chrono::prelude::*;
 use error::*;
-use std::collections::HashMap;
 use std::fmt;
 
 // Reexport the functions and structs from requests.rs
@@ -213,57 +212,6 @@ impl Character {
             Character::HappyChaos => 0x11,
         }
     }
-
-    /// Convert the character enum to the code used by the profile API
-    #[allow(dead_code)]
-    fn to_code(&self) -> &'static str {
-        match self {
-            Character::Sol => "SOL",
-            Character::Ky => "KYK",
-            Character::May => "MAY",
-            Character::Axl => "AXL",
-            Character::Leo => "LEO",
-            Character::Ino => "INO",
-            Character::Zato => "ZAT",
-            Character::Anji => "ANJ",
-            Character::Chipp => "CHP",
-            Character::Faust => "FAU",
-            Character::Potemkin => "POT",
-            Character::Millia => "MLL",
-            Character::Ramlethal => "RAM",
-            Character::Giovanna => "GIO",
-            Character::Nagoriyuki => "NAG",
-            Character::Goldlewis => "GLD",
-            Character::Jacko => "JKO",
-            Character::HappyChaos => "COS",
-        }
-    }
-
-    /// Convert back to the character enum based on the profile API code representation of it
-    #[allow(dead_code)]
-    fn from_code<'a>(code: &'a str) -> Result<'a, Character> {
-        match code {
-            "SOL" => Ok(Character::Sol),
-            "KYK" => Ok(Character::Ky),
-            "MAY" => Ok(Character::May),
-            "AXL" => Ok(Character::Axl),
-            "LEO" => Ok(Character::Leo),
-            "INO" => Ok(Character::Ino),
-            "ZAT" => Ok(Character::Zato),
-            "ANJ" => Ok(Character::Anji),
-            "CHP" => Ok(Character::Chipp),
-            "FAU" => Ok(Character::Faust),
-            "POT" => Ok(Character::Potemkin),
-            "MLL" => Ok(Character::Millia),
-            "RAM" => Ok(Character::Ramlethal),
-            "GIO" => Ok(Character::Giovanna),
-            "NAG" => Ok(Character::Nagoriyuki),
-            "GLD" => Ok(Character::Goldlewis),
-            "JKO" => Ok(Character::Jacko),
-            "COS" => Ok(Character::HappyChaos),
-            _ => Err(Error::InvalidCharacterCode(code.into())),
-        }
-    }
 }
 
 /// Enum mapping for floors present in the game
@@ -321,41 +269,5 @@ impl Floor {
             Floor::F10 => "0a".into(),
             Floor::Celestial => "63".into(),
         }
-    }
-}
-
-#[allow(dead_code)]
-#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
-pub struct MatchStats {
-    total: usize,
-    wins: usize,
-}
-
-#[allow(dead_code)]
-#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
-struct CharacterStats {
-    level: usize,
-    wins: usize,
-}
-
-#[allow(dead_code)]
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub struct User {
-    pub id: String,
-    pub name: String,
-    pub comment: String,
-    pub floor: Floor,
-    stats: MatchStats,
-    celestial_stats: MatchStats,
-    char_stats: HashMap<Character, CharacterStats>,
-}
-
-impl fmt::Display for User {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "User {{\n  {}({}) @ floor {:?}\n  \"{}\"}}",
-            self.name, self.id, self.floor, self.comment
-        )
     }
 }
