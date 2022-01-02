@@ -136,7 +136,7 @@ impl Character {
     /// 08: Zato-1 09: Ram 0a: Leo 0b: Nago 0c: Gio 0d: Anji 0e: I-No 0f: Goldlewis 10: Jack-O
     ///
     /// See https://github.com/optix2000/totsugeki/issues/35#issuecomment-922516535
-    pub fn from_u8(c: u8) -> Result<Self> {
+    pub fn from_u8(c: u8) -> Result<'static, Self> {
         match c {
             0x00 => Ok(Character::Sol),
             0x01 => Ok(Character::Ky),
@@ -156,7 +156,7 @@ impl Character {
             0x0f => Ok(Character::Goldlewis),
             0x10 => Ok(Character::Jacko),
             0x11 => Ok(Character::HappyChaos),
-            _ => Err(Error::InvalidArguments(format!(
+            _ => Err(Error::InvalidArgument(format!(
                 "{:x} is not a valid character code",
                 c
             ))),
@@ -218,7 +218,7 @@ impl Character {
 
     /// Convert back to the character enum based on the profile API code representation of it
     #[allow(dead_code)]
-    fn from_code(code: &str) -> Result<Character> {
+    fn from_code<'a>(code: &'a str) -> Result<'a, Character> {
         match code {
             "SOL" => Ok(Character::Sol),
             "KYK" => Ok(Character::Ky),
@@ -263,7 +263,7 @@ impl Floor {
     /// Create a floor from a byte representation
     ///
     /// See https://github.com/optix2000/totsugeki/issues/35#issuecomment-922516535 for mapping
-    fn from_u8(c: u8) -> Result<Self> {
+    fn from_u8(c: u8) -> Result<'static, Self> {
         match c {
             0x01 => Ok(Floor::F1),
             0x02 => Ok(Floor::F2),
@@ -276,7 +276,7 @@ impl Floor {
             0x09 => Ok(Floor::F9),
             0x0a => Ok(Floor::F10),
             0x63 => Ok(Floor::Celestial),
-            _ => Err(Error::InvalidArguments(format!(
+            _ => Err(Error::InvalidArgument(format!(
                 "{:x} is not a valid floor code",
                 c
             ))),
