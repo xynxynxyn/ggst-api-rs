@@ -264,7 +264,7 @@ impl Floor {
     /// Create a floor from a byte representation
     ///
     /// See https://github.com/optix2000/totsugeki/issues/35#issuecomment-922516535 for mapping
-    fn from_u8(c: u8) -> Result<Self> {
+    pub fn from_u8(c: u8) -> Result<Self> {
         match c {
             0x01 => Ok(Floor::F1),
             0x02 => Ok(Floor::F2),
@@ -285,7 +285,7 @@ impl Floor {
     }
 
     /// Similar to to_u8() but it directly returns its string representation for url building
-    fn to_hex(&self) -> String {
+    pub fn to_hex(&self) -> String {
         match self {
             Floor::F1 => "01".into(),
             Floor::F2 => "02".into(),
