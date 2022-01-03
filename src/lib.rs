@@ -2,6 +2,7 @@ pub mod error;
 pub mod requests;
 
 use chrono::prelude::*;
+use derivative::*;
 use error::*;
 #[cfg(feature = "serde")]
 use serde_crate::{Deserialize, Serialize};
@@ -11,15 +12,17 @@ use std::fmt;
 pub use requests::*;
 
 /// Player information associated with a match
-#[derive(Hash, Clone, Debug, PartialOrd, Ord)]
+#[derive(Derivative, Clone, Debug, PartialOrd, Ord)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
+#[derivative(Hash)]
 pub struct Player {
     id: u64,
     character: Character,
+    #[derivative(Hash = "ignore")]
     name: String,
 }
 
@@ -79,8 +82,8 @@ pub struct Match {
 }
 
 impl Match {
-    pub fn floor(&self) -> &Floor {
-        &self.floor
+    pub fn floor(&self) -> Floor {
+        self.floor
     }
 
     pub fn timestamp(&self) -> &DateTime<Utc> {
@@ -296,5 +299,36 @@ impl Floor {
             Floor::F10 => "0a".into(),
             Floor::Celestial => "63".into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use std::hash::Hasher;
+
+    use super::*;
+    #[test]
+    fn player_hash_eq() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::Hash;
+
+        let p1 = Player {
+            id: 2,
+            character: Character::Sol,
+            name: "name1".into(),
+        };
+        let p2 = Player {
+            id: 2,
+            character: Character::Sol,
+            name: "name2".into(),
+        };
+
+        let mut hasher1 = DefaultHasher::new();
+        let mut hasher2 = DefaultHasher::new();
+        p1.hash(&mut hasher1);
+        p2.hash(&mut hasher2);
+        assert_eq!(hasher1.finish(), hasher2.finish());
+        assert_eq!(p1, p2);
     }
 }

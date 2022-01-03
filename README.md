@@ -39,7 +39,7 @@ The `Eq` implementation for `Player` ignores the name value as a user can change
 ```rust
 pub struct Match;
 impl Match {
-    pub fn floor(&self) -> &Floor;
+    pub fn floor(&self) -> Floor;
     pub fn timestamp(&self) -> &DateTime<Utc>;
     pub fn players(&self) -> (&Player, &Player);
     pub fn winner(&self) -> &Player;
