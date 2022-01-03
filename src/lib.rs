@@ -20,10 +20,10 @@ pub use requests::*;
 )]
 #[derivative(Hash)]
 pub struct Player {
-    id: u64,
-    character: Character,
+    pub id: i64,
+    pub character: Character,
     #[derivative(Hash = "ignore")]
-    name: String,
+    pub name: String,
 }
 
 impl PartialEq for Player {
@@ -41,7 +41,7 @@ impl fmt::Display for Player {
 }
 
 impl Player {
-    pub fn id(&self) -> u64 {
+    pub fn id(&self) -> i64 {
         self.id
     }
 
@@ -61,7 +61,7 @@ impl Player {
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-enum Winner {
+pub enum Winner {
     Player1,
     Player2,
 }
@@ -75,10 +75,10 @@ enum Winner {
     serde(crate = "serde_crate")
 )]
 pub struct Match {
-    timestamp: DateTime<Utc>,
-    floor: Floor,
-    players: (Player, Player),
-    winner: Winner,
+    pub timestamp: DateTime<Utc>,
+    pub floor: Floor,
+    pub players: (Player, Player),
+    pub winner: Winner,
 }
 
 impl Match {
