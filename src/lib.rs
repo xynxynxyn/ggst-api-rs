@@ -3,6 +3,8 @@ pub mod requests;
 
 use chrono::prelude::*;
 use error::*;
+#[cfg(feature = "serde")]
+use serde_crate::{Deserialize, Serialize};
 use std::fmt;
 
 // Reexport the functions and structs from requests.rs
@@ -10,6 +12,11 @@ pub use requests::*;
 
 /// Player information associated with a match
 #[derive(Hash, Clone, Debug, PartialOrd, Ord)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub struct Player {
     id: u64,
     character: Character,
@@ -46,6 +53,11 @@ impl Player {
 
 /// Indicates which player won a match
 #[derive(Hash, PartialEq, Eq, Debug, Clone, Copy, PartialOrd, Ord)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 enum Winner {
     Player1,
     Player2,
@@ -54,6 +66,11 @@ enum Winner {
 /// A match received by the get_replay API
 /// Use requests::get_replays() to query for replays to get a set of this struct
 #[derive(Hash, PartialEq, Eq, Debug, Clone, PartialOrd, Ord)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub struct Match {
     timestamp: DateTime<Utc>,
     floor: Floor,
@@ -106,6 +123,11 @@ impl fmt::Display for Match {
 
 /// Enum for characters in the game
 #[derive(Hash, Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum Character {
     Sol,
     Ky,
@@ -216,6 +238,11 @@ impl Character {
 
 /// Enum mapping for floors present in the game
 #[derive(PartialOrd, Ord, Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum Floor {
     F1,
     F2,
