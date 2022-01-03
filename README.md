@@ -21,7 +21,7 @@ This example fetches 100 pages of at most 127 replays each between floor 7 and c
 It then prints the meta data for all replays collected as well as report any parsing errors.
 
 ```rust
-use ggst-api::*;
+use ggst_api::*;
 let ctx = Context::new();
 let (replays, parsing_errors) = get_replays(&ctx, 100, 127, Floor::F7, Floor::Celestial).await.unwrap();
 println!("Replays:");
