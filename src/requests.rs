@@ -42,15 +42,16 @@ fn id_from_bytes(bytes: &[u8]) -> Result<u64> {
         .map_err(|_| Error::ParsingBytesError("could not parse userid from String"))?)
 }
 
-/// Retrieve the latest set of replays. Each page contains approximately 10 replays, however this is not
+/// Retrieve the latest set of replays. Each page contains approximately 10 replays by default, however this is not
 /// guaranteed. Indicate the min and maximum floor you want to query.
-/// No more than 100 pages can be queried at a time. If no matches can be found the parsing will
-/// fail. Usually a few replays have weird timestamps from the future. It is recommended to apply a
-/// filter on the current time before using any matches, like `.filter(|m| m.timestamp() <
-/// &chrono::Utc::now())`
+/// No more than 100 pages can be queried at a time and only 127 replays per page max.
+/// If no matches can be found the parsing will fail.
+/// Usually a few replays have weird timestamps from the future. It is recommended to apply a
+/// filter on the current time before using any matches, like `.filter(|m| m.timestamp() < &chrono::Utc::now())`
 pub async fn get_replays(
     context: &Context,
     pages: usize,
+    replays_per_page: usize,
     min_floor: Floor,
     max_floor: Floor,
 ) -> Result<(
@@ -62,6 +63,12 @@ pub async fn get_replays(
         return Err(Error::InvalidArgument(format!(
             "cannot query more than 100 pages, queried {}",
             pages
+        )));
+    }
+    if replays_per_page > 127 {
+        return Err(Error::InvalidArgument(format!(
+            "cannot query more than 127 replays per page, queried {}",
+            replays_per_page
         )));
     }
     if min_floor > max_floor {
@@ -80,9 +87,11 @@ pub async fn get_replays(
     for i in 0..pages {
         // Construct the query string
         let hex_index = format!("{:02X}", i);
+        let replays_per_page_hex = format!("{:02X}", replays_per_page);
         let query_string = format!(
-            "9295B2323131303237313133313233303038333834AD3631613565643466343631633202A5302E302E38039401CC{}0A9AFF00{}{}90FFFF000001",
+            "9295B2323131303237313133313233303038333834AD3631613565643466343631633202A5302E302E38039401CC{}{}9AFF00{}{}90FFFF000001",
             hex_index,
+            replays_per_page_hex,
             min_floor.to_hex(),
             max_floor.to_hex());
         let response = client
@@ -317,9 +326,16 @@ mod tests {
     async fn query_replays() {
         let ctx = Context::new();
         let n_replays = 100;
-        let (replays, errors) = get_replays(&ctx, n_replays, Floor::F1, Floor::Celestial)
-            .await
-            .unwrap();
+        let n_replays_per_page = 127;
+        let (replays, errors) = get_replays(
+            &ctx,
+            n_replays,
+            n_replays_per_page,
+            Floor::F1,
+            Floor::Celestial,
+        )
+        .await
+        .unwrap();
         let replays = replays
             .filter(|m| m.timestamp() < &Utc::now())
             .collect::<Vec<_>>();
