@@ -284,6 +284,22 @@ impl Floor {
         }
     }
 
+    pub fn to_u8(self) -> u8 {
+        match self {
+            Floor::F1 => 1,
+            Floor::F2 => 2,
+            Floor::F3 => 3,
+            Floor::F4 => 4,
+            Floor::F5 => 5,
+            Floor::F6 => 6,
+            Floor::F7 => 7,
+            Floor::F8 => 8,
+            Floor::F9 => 9,
+            Floor::F10 => 10,
+            Floor::Celestial => 99,
+        }
+    }
+
     /// Similar to to_u8() but it directly returns its string representation for url building
     pub fn to_hex(&self) -> String {
         match self {
