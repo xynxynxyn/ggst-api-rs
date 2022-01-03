@@ -347,6 +347,12 @@ mod tests {
         }
 
         println!("Errors:");
-        errors.for_each(|e| eprintln!("{}", e));
+        let errors = errors
+            .map(|e| {
+                eprintln!("{}", e);
+                e
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(errors.len(), 0);
     }
 }
