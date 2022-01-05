@@ -10,20 +10,28 @@ pub async fn get_replays(
     context: &Context,
     pages: usize,
     replays_per_page: usize,
-    min_floor: Floor,
-    max_floor: Floor,
+    query_parameters: QueryParameters,
 ) -> Result<(impl Iterator<Item = Match>, impl Iterator<Item = ParseError>)>
 ```
 
 ## Example
 
-This example fetches 100 pages of at most 127 replays each between floor 7 and celestial.
+This example fetches 100 pages of at most 127 replays each between floor 7 and celestial where Sol
+is present.
 It then prints the meta data for all replays collected as well as report any parsing errors.
 
 ```rust
 use ggst-api::*;
 let ctx = Context::new();
-let (replays, parsing_errors) = get_replays(&ctx, 100, 127, Floor::F7, Floor::Celestial).await.unwrap();
+let (replays, parsing_errors) = get_replays(
+    &ctx,
+    100,
+    127,
+    QueryParameters::default()
+        .min_floor(Floor::F7)
+        .max_floor(Floor::Celestial)
+        .character(Character::Sol)
+    ).await.unwrap();
 println!("Replays:");
 replays.for_all(|r| println!("{}", r));
 println!("Errors:");

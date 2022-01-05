@@ -49,12 +49,11 @@ fn id_from_bytes(bytes: &[u8]) -> Result<u64> {
 /// If no matches can be found the parsing will fail.
 /// Usually a few replays have weird timestamps from the future. It is recommended to apply a
 /// filter on the current time before using any matches, like `.filter(|m| m.timestamp() < &chrono::Utc::now())`
-pub async fn get_replays(
+pub async fn get_replays<A, B, C, D, E>(
     context: &Context,
     pages: usize,
     replays_per_page: usize,
-    min_floor: Floor,
-    max_floor: Floor,
+    request_parameters: QueryParameters<A, B, C, D, E>,
 ) -> Result<(
     impl Iterator<Item = Match>,
     impl Iterator<Item = ParseError>,
@@ -72,10 +71,11 @@ pub async fn get_replays(
             replays_per_page
         )));
     }
-    if min_floor > max_floor {
+
+    if request_parameters.min_floor > request_parameters.max_floor {
         return Err(Error::InvalidArgument(format!(
             "min_floor {:?} is larger than max_floor {:?}",
-            min_floor, max_floor
+            request_parameters.min_floor, request_parameters.max_floor
         )));
     }
 
@@ -90,11 +90,10 @@ pub async fn get_replays(
         let hex_index = format!("{:02X}", i);
         let replays_per_page_hex = format!("{:02X}", replays_per_page);
         let query_string = format!(
-            "9295B2323131303237313133313233303038333834AD3631613565643466343631633202A5302E302E38039401CC{}{}9AFF00{}{}90FFFF000001",
+            "9295B2323131303237313133313233303038333834AD3631613565643466343631633202A5302E302E38039401CC{}{}9AFF00{}",
             hex_index,
             replays_per_page_hex,
-            min_floor.to_hex(),
-            max_floor.to_hex());
+            request_parameters.build_aob());
         let response = client
             .post(&request_url)
             .header(header::USER_AGENT, "Steam")
@@ -318,41 +317,4 @@ fn show_buf<B: AsRef<[u8]>>(buf: B) -> String {
             .collect(),
     )
     .unwrap()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[tokio::test]
-    async fn query_replays() {
-        let ctx = Context::new();
-        let n_replays = 100;
-        let n_replays_per_page = 127;
-        let (replays, errors) = get_replays(
-            &ctx,
-            n_replays,
-            n_replays_per_page,
-            Floor::F1,
-            Floor::Celestial,
-        )
-        .await
-        .unwrap();
-        let replays = replays
-            .filter(|m| m.timestamp() < &Utc::now())
-            .collect::<Vec<_>>();
-        println!("Got {} replays", replays.len());
-        if replays.len() > 1 {
-            println!("Oldest replay: {}", replays.first().unwrap());
-            println!("Latest replay: {}", replays.last().unwrap());
-        }
-
-        println!("Errors:");
-        let errors = errors
-            .map(|e| {
-                eprintln!("{}", e);
-                e
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(errors.len(), 0);
-    }
 }
