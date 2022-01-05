@@ -22,9 +22,8 @@ It then prints the meta data for all replays collected as well as report any par
 
 ```rust
 use ggst_api::*;
-let ctx = Context::new();
 let (replays, parsing_errors) = get_replays(
-    &ctx,
+    &Context::default(),
     100,
     127,
     QueryParameters::default()
