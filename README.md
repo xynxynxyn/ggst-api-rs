@@ -21,7 +21,7 @@ is present.
 It then prints the meta data for all replays collected as well as report any parsing errors.
 
 ```rust
-use ggst-api::*;
+use ggst_api::*;
 let ctx = Context::new();
 let (replays, parsing_errors) = get_replays(
     &ctx,
