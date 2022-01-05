@@ -21,10 +21,10 @@ pub use requests::*;
 )]
 #[derivative(Hash)]
 pub struct Player {
-    id: u64,
-    character: Character,
+    pub id: u64,
+    pub character: Character,
     #[derivative(Hash = "ignore")]
-    name: String,
+    pub name: String,
 }
 
 impl PartialEq for Player {
@@ -38,20 +38,6 @@ impl Eq for Player {}
 impl fmt::Display for Player {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} as {}", self.name, self.character)
-    }
-}
-
-impl Player {
-    pub fn id(&self) -> u64 {
-        self.id
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn character(&self) -> Character {
-        self.character
     }
 }
 
@@ -286,7 +272,7 @@ impl Floor {
     }
 
     /// Similar to to_u8() but it directly returns its string representation for url building
-    fn to_hex(&self) -> String {
+    fn as_hex(&self) -> String {
         match self {
             Floor::F1 => "01".into(),
             Floor::F2 => "02".into(),
@@ -364,8 +350,8 @@ impl<A, B, C, D, E> QueryParameters<A, B, C, D, E> {
     fn build_aob(&self) -> String {
         format!(
             "{}{}90{:02X}{:02X}{:02X}0001",
-            self.min_floor.to_hex(),
-            self.max_floor.to_hex(),
+            self.min_floor.as_hex(),
+            self.max_floor.as_hex(),
             self.char_1.map_or_else(|| 0xff, |c| c.to_u8()),
             self.char_2.map_or_else(|| 0xff, |c| c.to_u8()),
             self.winner.map_or_else(
@@ -502,7 +488,7 @@ mod test {
     #[tokio::test]
     async fn query_replays() {
         use crate::*;
-        let ctx = Context::new();
+        let ctx = Context::default();
         let n_pages = 100;
         let n_replays_per_page = 127;
         let (replays, errors) = get_replays(

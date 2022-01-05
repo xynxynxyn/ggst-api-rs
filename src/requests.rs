@@ -24,23 +24,18 @@ impl Default for Context {
 }
 
 impl Context {
-    pub fn new() -> Self {
-        Context::default()
-    }
-
     /// Overwrite the url used for api requests. The default is https://ggst-game.guiltygear.com
     /// You can modify this to a proxy in your area for faster requests
-    pub fn base_url(mut self, base_url: String) -> Self {
-        self.base_url = base_url;
-        self
+    pub fn new(base_url: String) -> Self {
+        Context { base_url }
     }
 }
 
 fn id_from_bytes(bytes: &[u8]) -> Result<u64> {
     let s =
         str::from_utf8(bytes).map_err(|_| Error::ParsingBytesError("could not parse userid"))?;
-    Ok(u64::from_str_radix(s, 10)
-        .map_err(|_| Error::ParsingBytesError("could not parse userid from String"))?)
+    s.parse::<u64>()
+        .map_err(|_| Error::ParsingBytesError("could not parse userid from String"))
 }
 
 /// Retrieve the latest set of replays. Each page contains approximately 10 replays by default, however this is not
@@ -312,8 +307,7 @@ fn show_buf<B: AsRef<[u8]>>(buf: B) -> String {
     String::from_utf8(
         buf.as_ref()
             .iter()
-            .map(|b| escape_default(*b))
-            .flatten()
+            .flat_map(|b| escape_default(*b))
             .collect(),
     )
     .unwrap()
