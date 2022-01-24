@@ -31,10 +31,10 @@ impl Context {
     }
 }
 
-fn id_from_bytes(bytes: &[u8]) -> Result<u64> {
+fn id_from_bytes(bytes: &[u8]) -> Result<i64> {
     let s =
         str::from_utf8(bytes).map_err(|_| Error::ParsingBytesError("could not parse userid"))?;
-    s.parse::<u64>()
+    s.parse::<i64>()
         .map_err(|_| Error::ParsingBytesError("could not parse userid from String"))
 }
 

@@ -21,7 +21,7 @@ pub use requests::*;
 )]
 #[derivative(Hash)]
 pub struct Player {
-    pub id: u64,
+    pub id: i64,
     pub character: Character,
     #[derivative(Hash = "ignore")]
     pub name: String,
@@ -62,10 +62,10 @@ pub enum Winner {
     serde(crate = "serde_crate")
 )]
 pub struct Match {
-    timestamp: DateTime<Utc>,
-    floor: Floor,
-    players: (Player, Player),
-    winner: Winner,
+    pub timestamp: DateTime<Utc>,
+    pub floor: Floor,
+    pub players: (Player, Player),
+    pub winner: Winner,
 }
 
 impl Match {
@@ -137,6 +137,7 @@ pub enum Character {
     Goldlewis,
     Jacko,
     HappyChaos,
+    Baiken,
 }
 
 impl fmt::Display for Character {
@@ -160,6 +161,7 @@ impl fmt::Display for Character {
             Character::Goldlewis => write!(f, "Goldlewis Dickinson"),
             Character::Jacko => write!(f, "Jack-o"),
             Character::HappyChaos => write!(f, "Happy Chaos"),
+            Character::Baiken => write!(f, "Baiken"),
         }
     }
 }
@@ -190,6 +192,7 @@ impl Character {
             0x0f => Ok(Character::Goldlewis),
             0x10 => Ok(Character::Jacko),
             0x11 => Ok(Character::HappyChaos),
+            0x12 => Ok(Character::Baiken),
             _ => Err(Error::InvalidArgument(format!(
                 "{:x} is not a valid character code",
                 c
@@ -222,6 +225,7 @@ impl Character {
             Character::Goldlewis => 0x0f,
             Character::Jacko => 0x10,
             Character::HappyChaos => 0x11,
+            Character::Baiken => 0x12,
         }
     }
 }
@@ -251,7 +255,7 @@ impl Floor {
     /// Create a floor from a byte representation
     ///
     /// See https://github.com/optix2000/totsugeki/issues/35#issuecomment-922516535 for mapping
-    fn from_u8(c: u8) -> Result<Self> {
+    pub fn from_u8(c: u8) -> Result<Self> {
         match c {
             0x01 => Ok(Floor::F1),
             0x02 => Ok(Floor::F2),
@@ -271,8 +275,24 @@ impl Floor {
         }
     }
 
+    pub fn to_u8(self) -> u8 {
+        match self {
+            Floor::F1 => 1,
+            Floor::F2 => 2,
+            Floor::F3 => 3,
+            Floor::F4 => 4,
+            Floor::F5 => 5,
+            Floor::F6 => 6,
+            Floor::F7 => 7,
+            Floor::F8 => 8,
+            Floor::F9 => 9,
+            Floor::F10 => 10,
+            Floor::Celestial => 99,
+        }
+    }
+
     /// Similar to to_u8() but it directly returns its string representation for url building
-    fn as_hex(&self) -> String {
+    pub fn as_hex(&self) -> String {
         match self {
             Floor::F1 => "01".into(),
             Floor::F2 => "02".into(),
