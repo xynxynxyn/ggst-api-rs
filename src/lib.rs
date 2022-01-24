@@ -309,16 +309,16 @@ impl Floor {
     }
 }
 
-enum NoChar1Set {}
-enum NoChar2Set {}
-enum Char1Set {}
-enum Char2Set {}
-enum NoWinnerSet {}
-enum WinnerSet {}
-enum NoMinFloorSet {}
-enum MinFloorSet {}
-enum NoMaxFloorSet {}
-enum MaxFloorSet {}
+pub enum NoChar1Set {}
+pub enum NoChar2Set {}
+pub enum Char1Set {}
+pub enum Char2Set {}
+pub enum NoWinnerSet {}
+pub enum WinnerSet {}
+pub enum NoMinFloorSet {}
+pub enum MinFloorSet {}
+pub enum NoMaxFloorSet {}
+pub enum MaxFloorSet {}
 
 /// Struct to group queryable filters together. This is passed to the get_replays function. The
 /// default query searches for all matches between floor 1 and celestial.
