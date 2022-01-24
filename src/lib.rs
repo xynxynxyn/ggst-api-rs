@@ -41,20 +41,6 @@ impl fmt::Display for Player {
     }
 }
 
-impl Player {
-    pub fn id(&self) -> i64 {
-        self.id
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn character(&self) -> Character {
-        self.character
-    }
-}
-
 /// Indicates which player won a match
 #[derive(Hash, PartialEq, Eq, Debug, Clone, Copy, PartialOrd, Ord)]
 #[cfg_attr(
