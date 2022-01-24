@@ -7,8 +7,9 @@ use error::*;
 #[cfg(feature = "serde")]
 use serde_crate::{Deserialize, Serialize};
 use std::fmt;
+use std::marker::PhantomData;
 
-// Reexport the functions and structs from requests.rs
+// Reexport the functions and structs from requests.rs and parameters.rs
 pub use requests::*;
 
 /// Player information associated with a match
@@ -301,7 +302,7 @@ impl Floor {
     }
 
     /// Similar to to_u8() but it directly returns its string representation for url building
-    pub fn to_hex(&self) -> String {
+    pub fn as_hex(&self) -> String {
         match self {
             Floor::F1 => "01".into(),
             Floor::F2 => "02".into(),
@@ -314,6 +315,172 @@ impl Floor {
             Floor::F9 => "09".into(),
             Floor::F10 => "0a".into(),
             Floor::Celestial => "63".into(),
+        }
+    }
+}
+
+enum NoChar1Set {}
+enum NoChar2Set {}
+enum Char1Set {}
+enum Char2Set {}
+enum NoWinnerSet {}
+enum WinnerSet {}
+enum NoMinFloorSet {}
+enum MinFloorSet {}
+enum NoMaxFloorSet {}
+enum MaxFloorSet {}
+
+/// Struct to group queryable filters together. This is passed to the get_replays function. The
+/// default query searches for all matches between floor 1 and celestial.
+///
+/// To find matches between floor 10 and celestial between Sol and Zato where Sol wins you would
+/// construct the following query parameters:
+///
+/// ```ignore
+/// QueryParameters::new()
+///     .min_floor(Floor::F10)
+///     .max_floor(Floor::Celestial)
+///     .character(Character::Sol)
+///     .character(Character::Zato)
+///     .winner(Winner::Player1)
+/// ```
+pub struct QueryParameters<Char1Status, Char2Status, WinnerStatus, MinFloorStatus, MaxFloorStatus> {
+    min_floor: Floor,
+    max_floor: Floor,
+    char_1: Option<Character>,
+    char_2: Option<Character>,
+    winner: Option<Winner>,
+    phantom1: PhantomData<Char1Status>,
+    phantom2: PhantomData<Char2Status>,
+    phantom3: PhantomData<WinnerStatus>,
+    phantom4: PhantomData<MinFloorStatus>,
+    phantom5: PhantomData<MaxFloorStatus>,
+}
+
+impl Default
+    for QueryParameters<NoChar1Set, NoChar2Set, NoWinnerSet, NoMinFloorSet, NoMaxFloorSet>
+{
+    fn default() -> Self {
+        QueryParameters {
+            min_floor: Floor::F1,
+            max_floor: Floor::Celestial,
+            char_1: None,
+            char_2: None,
+            winner: None,
+            phantom1: PhantomData,
+            phantom2: PhantomData,
+            phantom3: PhantomData,
+            phantom4: PhantomData,
+            phantom5: PhantomData,
+        }
+    }
+}
+
+impl<A, B, C, D, E> QueryParameters<A, B, C, D, E> {
+    fn build_aob(&self) -> String {
+        format!(
+            "{}{}90{:02X}{:02X}{:02X}0001",
+            self.min_floor.as_hex(),
+            self.max_floor.as_hex(),
+            self.char_1.map_or_else(|| 0xff, |c| c.to_u8()),
+            self.char_2.map_or_else(|| 0xff, |c| c.to_u8()),
+            self.winner.map_or_else(
+                || 0x00,
+                |w| match w {
+                    Winner::Player1 => 0x01,
+                    Winner::Player2 => 0x02,
+                }
+            )
+        )
+    }
+}
+
+impl<A, B, C, E> QueryParameters<A, B, C, NoMinFloorSet, E> {
+    /// Set the minimum floor to query for
+    pub fn min_floor(self, floor: Floor) -> QueryParameters<A, B, C, MinFloorSet, E> {
+        QueryParameters {
+            min_floor: floor,
+            max_floor: self.max_floor,
+            char_1: self.char_1,
+            char_2: self.char_2,
+            winner: self.winner,
+            phantom1: PhantomData,
+            phantom2: PhantomData,
+            phantom3: PhantomData,
+            phantom4: PhantomData,
+            phantom5: PhantomData,
+        }
+    }
+}
+
+impl<A, B, C, D> QueryParameters<A, B, C, D, NoMaxFloorSet> {
+    /// Set the maximum floor to query for
+    pub fn max_floor(self, floor: Floor) -> QueryParameters<A, B, C, D, MaxFloorSet> {
+        QueryParameters {
+            min_floor: self.min_floor,
+            max_floor: floor,
+            char_1: self.char_1,
+            char_2: self.char_2,
+            winner: self.winner,
+            phantom1: PhantomData,
+            phantom2: PhantomData,
+            phantom3: PhantomData,
+            phantom4: PhantomData,
+            phantom5: PhantomData,
+        }
+    }
+}
+
+impl<B, C, D, E> QueryParameters<NoChar1Set, B, C, D, E> {
+    /// Set the player 1 character
+    pub fn character(self, character: Character) -> QueryParameters<Char1Set, B, C, D, E> {
+        QueryParameters {
+            min_floor: self.min_floor,
+            max_floor: self.max_floor,
+            char_1: Some(character),
+            char_2: self.char_2,
+            winner: self.winner,
+            phantom1: PhantomData,
+            phantom2: PhantomData,
+            phantom3: PhantomData,
+            phantom4: PhantomData,
+            phantom5: PhantomData,
+        }
+    }
+}
+
+impl<C, D, E> QueryParameters<Char1Set, NoChar2Set, C, D, E> {
+    /// Set the player 2 character
+    pub fn character(self, character: Character) -> QueryParameters<Char1Set, Char2Set, C, D, E> {
+        QueryParameters {
+            min_floor: self.min_floor,
+            max_floor: self.max_floor,
+            char_1: self.char_1,
+            char_2: Some(character),
+            winner: self.winner,
+            phantom1: PhantomData,
+            phantom2: PhantomData,
+            phantom3: PhantomData,
+            phantom4: PhantomData,
+            phantom5: PhantomData,
+        }
+    }
+}
+
+impl<B, D, E> QueryParameters<Char1Set, B, NoWinnerSet, D, E> {
+    /// Set the winner of the set, this does not work properly for some reason
+    pub fn winner(self, winner: Winner) -> QueryParameters<Char1Set, B, WinnerSet, D, E> {
+        QueryParameters {
+            min_floor: self.min_floor,
+            max_floor: self.max_floor,
+            char_1: self.char_1,
+            char_2: self.char_2,
+            winner: Some(winner),
+            phantom1: PhantomData,
+            phantom2: PhantomData,
+            phantom3: PhantomData,
+            phantom4: PhantomData,
+            phantom5: PhantomData,
         }
     }
 }
@@ -346,5 +513,47 @@ mod test {
         p2.hash(&mut hasher2);
         assert_eq!(hasher1.finish(), hasher2.finish());
         assert_eq!(p1, p2);
+    }
+
+    #[tokio::test]
+    async fn query_replays() {
+        use crate::*;
+        let ctx = Context::default();
+        let n_pages = 100;
+        let n_replays_per_page = 127;
+        let (replays, errors) = get_replays(
+            &ctx,
+            n_pages,
+            n_replays_per_page,
+            QueryParameters::default()
+                .min_floor(Floor::F1)
+                .max_floor(Floor::Celestial),
+        )
+        .await
+        .unwrap();
+        let replays = replays
+            .filter(|m| m.timestamp() < &Utc::now())
+            .collect::<Vec<_>>();
+        println!("Got {} replays", replays.len());
+        if replays.len() > 1 {
+            println!("Oldest replay: {}", replays.first().unwrap());
+            println!("Latest replay: {}", replays.last().unwrap());
+        }
+
+        println!("First ten replays:");
+        replays
+            .iter()
+            .rev()
+            .take(10)
+            .for_each(|r| println!("{}", r));
+
+        println!("Errors:");
+        let errors = errors
+            .map(|e| {
+                eprintln!("{}", e);
+                e
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(errors.len(), 0);
     }
 }
