@@ -86,7 +86,7 @@ pub async fn get_replays<A, B, C, D, E>(
         let replays_per_page_hex = format!("{:02X}", replays_per_page);
         let query_string = format!(
             "9295B2323131303237313133313233303038333834AD3631613565643466343631633202A5{}039401CC{}{}9AFF00{}",
-            "302E302E3031",
+            "302E312E30",
             hex_index,
             replays_per_page_hex,
             request_parameters.build_aob());
