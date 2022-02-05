@@ -108,6 +108,68 @@ pub async fn get_replays<A, B, C, D, E>(
     Ok((matches.into_iter(), errors.into_iter()))
 }
 
+fn parse_messagepack_response(
+    matches: &mut BTreeSet<Match>,
+    errors: &mut Vec<ParseError>,
+    bytes: &[u8],
+) -> bool {
+    match rmp_serde::decode::from_slice::<messagepack::ReplayResponse>(bytes) {
+        Ok(response) => {
+            for replay in response.body.replays {
+                match match_from_replay(replay.clone()) {
+                    Ok(m) => {
+                        matches.insert(m);
+                    }
+                    Err(e) => {
+                        errors.push(ParseError::new(show_buf(bytes), e));
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            errors.push(ParseError::new(show_buf(bytes), e.into()));
+        }
+    }
+
+    true
+}
+
+fn match_from_replay(replay: messagepack::Replay) -> Result<Match> {
+    Ok(Match {
+        floor: Floor::from_u8(replay.floor)?,
+        timestamp: DateTime::<Utc>::from_utc(
+            NaiveDateTime::parse_from_str(&replay.date, "%Y-%m-%d %H:%M:%S")?,
+            Utc,
+        ),
+        players: (
+            Player::try_from((
+                Character::from_u8(replay.player1_character)?,
+                replay.player1,
+            ))?,
+            Player::try_from((
+                Character::from_u8(replay.player2_character)?,
+                replay.player2,
+            ))?,
+        ),
+        winner: match replay.winner {
+            1 => Winner::Player1,
+            2 => Winner::Player2,
+            _ => return Err(Error::ParsingBytesError("Could not parse winner")),
+        },
+    })
+}
+
+impl TryFrom<(Character, messagepack::Player)> for Player {
+    type Error = Error;
+    fn try_from((character, player): (Character, messagepack::Player)) -> Result<Self> {
+        Ok(Player {
+            id: id_from_bytes(player.id.as_bytes())?,
+            name: player.name,
+            character,
+        })
+    }
+}
+
 fn parse_response(
     matches: &mut BTreeSet<Match>,
     errors: &mut Vec<ParseError>,
@@ -328,13 +390,13 @@ fn show_buf<B: AsRef<[u8]>>(buf: B) -> String {
 
 mod messagepack {
     use serde_crate::Deserialize;
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
     pub struct ReplayResponse {
         pub header: Header,
         pub body: Body,
     }
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
     pub struct Header {
         pub id: String,
@@ -347,7 +409,7 @@ mod messagepack {
         pub string2: String,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
     pub struct Body {
         pub int1: i32,
@@ -355,17 +417,17 @@ mod messagepack {
         pub int3: i32,
         pub replays: Vec<Replay>,
     }
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
     pub struct Replay {
         pub int1: u64,
         pub int2: i32,
-        pub int3: i32,
-        pub int4: i32,
-        pub int5: i32,
+        pub floor: u8,
+        pub player1_character: u8,
+        pub player2_character: u8,
         pub player1: Player,
         pub player2: Player,
-        pub int6: i32,
+        pub winner: u8,
         pub date: String,
         pub int7: i32,
         pub int8: i32,
@@ -373,14 +435,14 @@ mod messagepack {
         pub int10: i32,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
     pub struct Player {
         pub id: String,
         pub name: String,
         pub string1: String,
         pub string2: String,
-        pub int1: i32,
+        pub character: u8,
     }
 }
 
@@ -394,7 +456,7 @@ mod tests {
     fn test_parse_response() {
         let mut matches = BTreeSet::new();
         let mut errors = Vec::new();
-        parse_response(&mut matches, &mut errors, &RESPONSE);
+        parse_messagepack_response(&mut matches, &mut errors, &RESPONSE);
 
         assert!(errors.is_empty(), "Got errors: {:#?}", errors);
 
