@@ -98,42 +98,54 @@ pub async fn get_replays<A, B, C, D, E>(
             .send()
             .await?;
 
-        // Regex's to parse the raw bytes received
-        lazy_static! {
-            // This separates the matches from each other
-            static ref MATCH_SEP: bytes::Regex =
-                bytes::Regex::new(r"(?-u)\x01\x00\x00\x00")
-                    .expect("Could not compile regex");
-        }
-
         // Convert the response to raw bytes
         let bytes = response.bytes().await?;
 
-        // Check if only the header is present
-        // If yes then we found no matches and return early
-        // The function should not fail but rather return an empty set or what was already found
-        if bytes.len() < 63 {
+        if !parse_response(&mut matches, &mut errors, &bytes) {
             return Ok((matches.into_iter(), errors.into_iter()));
-        }
-
-        // Remove the first 61 bytes, they are static header, we don't need them
-        let bytes = bytes.slice(61..);
-
-        // Split on the match separator and keep non empty results only
-        // This should give us 10 separate matches
-        for raw_match in MATCH_SEP.split(&bytes).filter(|b| !b.is_empty()) {
-            // Insert it into the set
-            match parse_match(raw_match) {
-                Ok(m) => {
-                    matches.insert(m);
-                }
-                Err(e) => {
-                    errors.push(ParseError::new(show_buf(raw_match), e));
-                }
-            };
         }
     }
     Ok((matches.into_iter(), errors.into_iter()))
+}
+
+fn parse_response(
+    matches: &mut BTreeSet<Match>,
+    errors: &mut Vec<ParseError>,
+    bytes: &[u8],
+) -> bool {
+    // Regex's to parse the raw bytes received
+    lazy_static! {
+        // This separates the matches from each other
+        static ref MATCH_SEP: bytes::Regex =
+            bytes::Regex::new(r"(?-u)\x01\x00\x00\x00")
+                .expect("Could not compile regex");
+    }
+
+    // Check if only the header is present
+    // If yes then we found no matches and return early
+    // The function should not fail but rather return an empty set or what was already found
+    if bytes.len() < 63 {
+        return false;
+    }
+
+    // Remove the first 61 bytes, they are static header, we don't need them
+    let bytes = &bytes[61..];
+
+    // Split on the match separator and keep non empty results only
+    // This should give us 10 separate matches
+    for raw_match in MATCH_SEP.split(&bytes).filter(|b| !b.is_empty()) {
+        // Insert it into the set
+        match parse_match(raw_match) {
+            Ok(m) => {
+                matches.insert(m);
+            }
+            Err(e) => {
+                errors.push(ParseError::new(show_buf(raw_match), e));
+            }
+        };
+    }
+
+    true
 }
 
 fn parse_match(raw_match: &[u8]) -> Result<Match> {
@@ -312,4 +324,80 @@ fn show_buf<B: AsRef<[u8]>>(buf: B) -> String {
             .collect(),
     )
     .unwrap()
+}
+
+mod messagepack {
+    use serde_crate::Deserialize;
+    #[derive(Debug)]
+    #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
+    pub struct ReplayResponse {
+        pub header: Header,
+        pub body: Body,
+    }
+    #[derive(Debug)]
+    #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
+    pub struct Header {
+        pub id: String,
+        pub int1: i32,
+        pub date: String,
+        pub version1: String,
+        pub version2: String,
+        pub version3: String,
+        pub string1: String,
+        pub string2: String,
+    }
+
+    #[derive(Debug)]
+    #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
+    pub struct Body {
+        pub int1: i32,
+        pub int2: i32,
+        pub int3: i32,
+        pub replays: Vec<Replay>,
+    }
+    #[derive(Debug)]
+    #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
+    pub struct Replay {
+        pub int1: u64,
+        pub int2: i32,
+        pub int3: i32,
+        pub int4: i32,
+        pub int5: i32,
+        pub player1: Player,
+        pub player2: Player,
+        pub int6: i32,
+        pub date: String,
+        pub int7: i32,
+        pub int8: i32,
+        pub int9: i32,
+        pub int10: i32,
+    }
+
+    #[derive(Debug)]
+    #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
+    pub struct Player {
+        pub id: String,
+        pub name: String,
+        pub string1: String,
+        pub string2: String,
+        pub int1: i32,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const RESPONSE: &[u8] = b"\x92\x98\xad61ff0796545a9\0\xb32022/02/05 23:26:14\xa50.1.0\xa50.0.2\xa50.0.2\xa0\xa0\x94\0\0\x1e\xdc\0\x1e\x9d\xcf\x03\x0eS}\x9f\x8ds\xbf\t\x08\x0c\x0b\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210818223745601103\xafSamuraiPizzaCat\xb176561199149925226\xaf110000146e8c36a\x07\x02\xb32022-02-06 04:07:59\x01\0\0\0\x9d\xcf\x03\x0eS|v\xbc6N\t\x08\x11\x0c\x95\xb2210905181006143473\xa8Haratura\xb176561198148293594\xaf11000010b3513da\x07\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:58:19\x01\0\0\0\x9d\xcf\x03\x0eS|lr}\xc1\t\x08\x11\x0c\x95\xb2210905181006143473\xa8Haratura\xb176561198148293594\xaf11000010b3513da\x07\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:56:46\x01\0\0\0\x9d\xcf\x03\x0eS|du\xac>\t\x08\x11\x0c\x95\xb2210905181006143473\xa8Haratura\xb176561198148293594\xaf11000010b3513da\x07\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:55:12\x01\0\0\0\x9d\xcf\x03\x0eSy?\x93\x83\x86\t\x06\x04\0\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2211128031436376804\xa9BundleBox\xb176561198103224698\xaf11000010885617a\x05\x01\xb32022-02-06 03:29:31\x01\0\0\0\x9d\xcf\x03\x0eSy/\xfbL\xaa\t\x06\x04\0\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2211128031436376804\xa9BundleBox\xb176561198103224698\xaf11000010885617a\x05\x01\xb32022-02-06 03:27:10\x01\0\0\0\x9d\xcf\x03\x0eSy\"\xfc\x1d\x85\t\x06\x04\0\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2211128031436376804\xa9BundleBox\xb176561198103224698\xaf11000010885617a\x05\x02\xb32022-02-06 03:24:52\x01\0\0\0\x9d\xcf\x03\x0eSx\xf9\x8c\xd2\r\t\x06\x04\x12\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2210719021019879063\xa9Sebastard\xb176561198354593280\xaf11000011780f600\x05\x01\xb32022-02-06 03:17:56\x01\0\0\0\x9d\xcf\x03\x0eSx\xedf\x1f\xf4\t\x06\x04\x12\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2210719021019879063\xa9Sebastard\xb176561198354593280\xaf11000011780f600\x05\x01\xb32022-02-06 03:15:53\x01\0\0\0\x9d\xcf\x03\x0eS{q&\x8d\x92\t\x07\x05\x0c\x95\xb2220117205818084945\xa8Bugabalu\xb176561198136737187\xaf11000010a84bda3\x05\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x02\xb32022-02-06 03:14:30\x01\0\0\0\x9d\xcf\x03\x0eSx\xe0+\xf8\xf7\t\x06\x04\x12\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2210719021019879063\xa9Sebastard\xb176561198354593280\xaf11000011780f600\x05\x02\xb32022-02-06 03:13:31\x01\0\0\0\x9d\xcf\x03\x0eS{c\xba\xc9z\t\x07\x05\x0c\x95\xb2220117205818084945\xa8Bugabalu\xb176561198136737187\xaf11000010a84bda3\x05\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:12:05\x01\0\0\0\x9d\xcf\x03\x0eS{T\xd4\\\x90\t\x07\x05\x0c\x95\xb2220117205818084945\xa8Bugabalu\xb176561198136737187\xaf11000010a84bda3\x05\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x02\xb32022-02-06 03:09:55\x01\0\0\0\x9d\xcf\x03\x0eS{Ab\xacm\t\x07\x0c\t\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210811193631829778\xaeF4ulty_R4ilgun\xb176561198351152593\xaf1100001174c75d1\x06\x02\xb32022-02-06 03:06:29\x01\0\0\0\x9d\xcf\x03\x0eS{3\xde\xb6\xa2\t\x07\x0c\t\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210811193631829778\xaeF4ulty_R4ilgun\xb176561198351152593\xaf1100001174c75d1\x06\x01\xb32022-02-06 03:04:02\x01\0\0\0\x9d\xcf\x03\x0eS{)\x03G\xe2\t\x07\x0c\t\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210811193631829778\xaeF4ulty_R4ilgun\xb176561198351152593\xaf1100001174c75d1\x06\x02\xb32022-02-06 03:02:20\x01\0\0\0\x9d\xcf\x03\x0eS}\xfct\x97\x16\t\x08\0\x12\x95\xb2210615035914519825\xa5BL4DE\xb176561199083465035\xaf110000142f2a94b\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x01\xb32022-02-06 02:24:18\x01\0\0\0\x9d\xcf\x03\x0eS}\xf3\xeb\x0c\x8a\t\x08\0\x12\x95\xb2210615035914519825\xa5BL4DE\xb176561199083465035\xaf110000142f2a94b\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x02\xb32022-02-06 02:22:34\x01\0\0\0\x9d\xcf\x03\x0eS}\xdb{XM\tc\0\x0e\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x95\xb2210612045332227791\xa8R34 I-NO\xb176561198046971684\xaf1100001052b0724\t\x02\xb32022-02-06 02:22:08\x01\0\0\0\x9d\xcf\x03\x0eSy?\xd2\x135\tc\0\x07\x95\xb2210611092701986372\xa3tms\xb176561198223056552\xaf11000010fa9dea8\t\x95\xb2210611184101935607\xb0Shaco Arrombardo\xb176561198019472843\xaf110000103876dcb\t\x02\xb32022-02-06 02:19:53\x01\0\0\0\x9d\xcf\x03\x0eS}\xca\xaeev\tc\0\x0e\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x95\xb2210612045332227791\xa8R34 I-NO\xb176561198046971684\xaf1100001052b0724\t\x02\xb32022-02-06 02:19:26\x01\0\0\0\x9d\xcf\x03\x0eSy0\x12\xfd\x84\tc\0\x07\x95\xb2210611092701986372\xa3tms\xb176561198223056552\xaf11000010fa9dea8\t\x95\xb2210611184101935607\xb0Shaco Arrombardo\xb176561198019472843\xaf110000103876dcb\t\x01\xb32022-02-06 02:17:29\x01\0\0\0\x9d\xcf\x03\x0eSy$#\xb0\xfc\tc\0\x07\x95\xb2210611092701986372\xa3tms\xb176561198223056552\xaf11000010fa9dea8\t\x95\xb2210611184101935607\xb0Shaco Arrombardo\xb176561198019472843\xaf110000103876dcb\t\x01\xb32022-02-06 02:15:28\x01\0\0\0\x9d\xcf\x03\x0eS}\xc5\x15\xcf\xf1\t\x08\x12\x12\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2210611172901281375\xa4g5h3\xb176561198066767737\xaf110000106591779\x07\x02\xb32022-02-06 02:14:49\x01\0\0\0\x9d\xcf\x03\x0eS}\xb9w\xc3_\t\x08\x12\x12\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2210611172901281375\xa4g5h3\xb176561198066767737\xaf110000106591779\x07\x01\xb32022-02-06 02:12:53\x01\0\0\0\x9d\xcf\x03\x0eS}\x95\x1a\x14\xd0\tc\r\0\x95\xb2210611163406897038\xabKidSusSauce\xb176561198796113273\xaf110000131d20579\t\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x01\xb32022-02-06 02:10:27\x01\0\0\0\x9d\xcf\x03\x0eS}\xa7$\x04\x91\t\x08\x12\x12\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2210611172901281375\xa4g5h3\xb176561198066767737\xaf110000106591779\x07\x01\xb32022-02-06 02:09:46\x01\0\0\0\x9d\xcf\x03\x0eS|x.;\xd4\tc\x01\0\x95\xb2210612195532158554\xa7Nowhere\xb176561198108655731\xaf110000108d84073\t\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x02\xb32022-02-06 02:02:47\x01\0\0\0\x9d\xcf\x03\x0eS}re;\xfc\t\x08\x12\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2211222194227494329\xacEpicKittyCat\xb176561198040006360\xaf110000104c0bed8\x07\x01\xb32022-02-06 02:01:01\x01\0\0\0\x9d\xcf\x03\x0eS|d\xdd\x9d\x8c\t\x08\x02\x12\x95\xb2211224234141126253\xa6Fakuto\xb176561198387121965\xaf110000119714f2d\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x02\xb32022-02-06 01:55:39\x01\0\0\0";
+
+    #[test]
+    fn test_parse_response() {
+        let mut matches = BTreeSet::new();
+        let mut errors = Vec::new();
+        parse_response(&mut matches, &mut errors, &RESPONSE);
+
+        assert!(errors.is_empty(), "Got errors: {:#?}", errors);
+
+        expect_test::expect_file!["../test_data/replay_response.txt"].assert_debug_eq(&matches);
+    }
 }

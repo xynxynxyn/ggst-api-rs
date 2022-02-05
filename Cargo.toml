@@ -10,9 +10,15 @@ reqwest = { version = "0.11" }
 tokio = { version = "1", features = ["full"] }
 regex = "1.5"
 lazy_static = "1.4.0"
-chrono = { package = "chrono", version = "0.4" }
+chrono = { package = "chrono", version = "0.4", features = ["serde"] }
 derivative = "2"
-serde_crate = { package = "serde", version = "1.0", features = ["derive"], optional = true }
+rmp-serde = "1"
+serde_crate = { package = "serde", version = "1.0", features = ["derive"] }
+bytes = "1"
+
+[dev-dependencies]
+expect-test = "1"
 
 [features]
-serde = ["chrono/serde", "serde_crate"]
+serde = []
+default = ["serde"]
