@@ -137,19 +137,10 @@ fn parse_messagepack_response(
 fn match_from_replay(replay: messagepack::Replay) -> Result<Match> {
     Ok(Match {
         floor: Floor::from_u8(replay.floor)?,
-        timestamp: DateTime::<Utc>::from_utc(
-            NaiveDateTime::parse_from_str(&replay.date, "%Y-%m-%d %H:%M:%S")?,
-            Utc,
-        ),
+        timestamp: replay.date,
         players: (
-            Player::try_from((
-                Character::from_u8(replay.player1_character)?,
-                replay.player1,
-            ))?,
-            Player::try_from((
-                Character::from_u8(replay.player2_character)?,
-                replay.player2,
-            ))?,
+            Player::try_from((replay.player1_character, replay.player1))?,
+            Player::try_from((replay.player2_character, replay.player2))?,
         ),
         winner: match replay.winner {
             1 => Winner::Player1,
@@ -389,7 +380,14 @@ fn show_buf<B: AsRef<[u8]>>(buf: B) -> String {
 }
 
 mod messagepack {
-    use serde_crate::Deserialize;
+    use super::*;
+
+    use serde_crate::{
+        de::{Deserializer, Error as _},
+        Deserialize,
+    };
+
+    use crate::Character;
     #[derive(Debug, Clone)]
     #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
     pub struct ReplayResponse {
@@ -423,12 +421,14 @@ mod messagepack {
         pub int1: u64,
         pub int2: i32,
         pub floor: u8,
-        pub player1_character: u8,
-        pub player2_character: u8,
+        pub player1_character: Character,
+        pub player2_character: Character,
         pub player1: Player,
         pub player2: Player,
         pub winner: u8,
-        pub date: String,
+
+        #[serde(deserialize_with = "deserialize_date_time")]
+        pub date: chrono::DateTime<Utc>,
         pub int7: i32,
         pub int8: i32,
         pub int9: i32,
@@ -442,7 +442,20 @@ mod messagepack {
         pub name: String,
         pub string1: String,
         pub string2: String,
-        pub character: u8,
+        pub int1: i32,
+    }
+
+    fn deserialize_date_time<'de, D>(
+        deserializer: D,
+    ) -> std::result::Result<chrono::DateTime<chrono::Utc>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let time = String::deserialize(deserializer)?;
+        Ok(DateTime::<Utc>::from_utc(
+            NaiveDateTime::parse_from_str(&time, "%Y-%m-%d %H:%M:%S").map_err(D::Error::custom)?,
+            Utc,
+        ))
     }
 }
 
