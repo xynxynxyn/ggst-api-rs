@@ -18,6 +18,8 @@ bytes = "1"
 
 [dev-dependencies]
 expect-test = "1"
+rmpv = "1"
+hex = "0.4"
 
 [features]
 serde = []

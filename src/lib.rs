@@ -335,11 +335,11 @@ pub enum MaxFloorSet {}
 ///     .winner(Winner::Player1)
 /// ```
 pub struct QueryParameters<Char1Status, Char2Status, WinnerStatus, MinFloorStatus, MaxFloorStatus> {
-    min_floor: Floor,
-    max_floor: Floor,
-    char_1: Option<Character>,
-    char_2: Option<Character>,
-    winner: Option<Winner>,
+    pub(crate) min_floor: Floor,
+    pub(crate) max_floor: Floor,
+    pub(crate) char_1: Option<Character>,
+    pub(crate) char_2: Option<Character>,
+    pub(crate) winner: Option<Winner>,
     phantom1: PhantomData<Char1Status>,
     phantom2: PhantomData<Char2Status>,
     phantom3: PhantomData<WinnerStatus>,
@@ -363,25 +363,6 @@ impl Default
             phantom4: PhantomData,
             phantom5: PhantomData,
         }
-    }
-}
-
-impl<A, B, C, D, E> QueryParameters<A, B, C, D, E> {
-    fn build_aob(&self) -> String {
-        format!(
-            "{}{}90{:02X}{:02X}{:02X}0001",
-            self.min_floor.as_hex(),
-            self.max_floor.as_hex(),
-            self.char_1.map_or_else(|| 0xff, |c| c.to_u8()),
-            self.char_2.map_or_else(|| 0xff, |c| c.to_u8()),
-            self.winner.map_or_else(
-                || 0x00,
-                |w| match w {
-                    Winner::Player1 => 0x01,
-                    Winner::Player2 => 0x02,
-                }
-            )
-        )
     }
 }
 

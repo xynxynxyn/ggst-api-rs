@@ -82,14 +82,22 @@ pub async fn get_replays<A, B, C, D, E>(
     let mut errors = vec![];
     for i in 0..pages {
         // Construct the query string
-        let hex_index = format!("{:02X}", i);
-        let replays_per_page_hex = format!("{:02X}", replays_per_page);
-        let query_string = format!(
-            "9295B2323131303237313133313233303038333834AD3631613565643466343631633202A5{}039401CC{}{}9AFF00{}",
-            "302E312E30",
-            hex_index,
-            replays_per_page_hex,
-            request_parameters.build_aob());
+        let query_string = messagepack::ReplayRequest {
+            header: messagepack::RequestHeader {
+                string1: "211027113123008384".into(),
+                string2: "61a5ed4f461c2".into(),
+                int1: 2,
+                version: "0.1.0".into(),
+                int2: 3,
+            },
+            body: messagepack::RequestBody {
+                int1: 1,
+                index: i,
+                replays_per_page,
+                query: messagepack::RequestQuery::from(&request_parameters),
+            },
+        }
+        .to_hex();
         let response = client
             .post(&request_url)
             .header(header::USER_AGENT, "Steam")
@@ -388,15 +396,91 @@ mod messagepack {
     };
 
     use crate::Character;
+
+    impl ReplayRequest {
+        pub fn to_hex(&self) -> String {
+            use std::fmt::Write;
+
+            let mut buf = String::new();
+            for b in rmp_serde::encode::to_vec(self).unwrap() {
+                write!(buf, "{:02X}", b).unwrap();
+            }
+            buf
+        }
+    }
+
     #[derive(Debug, Clone)]
-    #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
-    pub struct ReplayResponse {
-        pub header: Header,
-        pub body: Body,
+    #[cfg_attr(feature = "serde", derive(Serialize), serde(crate = "serde_crate"))]
+    pub struct ReplayRequest {
+        pub header: RequestHeader,
+        pub body: RequestBody,
+    }
+
+    #[derive(Debug, Clone)]
+    #[cfg_attr(feature = "serde", derive(Serialize), serde(crate = "serde_crate"))]
+    pub struct RequestHeader {
+        pub string1: String,
+        pub string2: String,
+        pub int1: i32,
+        pub version: String,
+        pub int2: i32,
+    }
+
+    #[derive(Debug, Clone)]
+    #[cfg_attr(feature = "serde", derive(Serialize), serde(crate = "serde_crate"))]
+    pub struct RequestBody {
+        pub int1: u8,
+        pub index: usize,
+        pub replays_per_page: usize,
+        pub query: RequestQuery,
+    }
+
+    impl<A, B, C, D, E> From<&QueryParameters<A, B, C, D, E>> for RequestQuery {
+        fn from(query: &QueryParameters<A, B, C, D, E>) -> Self {
+            RequestQuery {
+                int1: -1,
+                int2: 0,
+                min_floor: query.min_floor.to_u8(),
+                max_floor: query.max_floor.to_u8(),
+                seq: vec![],
+                char_1: query.char_1.map_or_else(|| -1, |c| c.to_u8() as i8),
+                char_2: query.char_2.map_or_else(|| -1, |c| c.to_u8() as i8),
+                winner: query.winner.map_or_else(
+                    || 0x00,
+                    |w| match w {
+                        Winner::Player1 => 0x01,
+                        Winner::Player2 => 0x02,
+                    },
+                ),
+                int8: 0,
+                int9: 1,
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    #[cfg_attr(feature = "serde", derive(Serialize), serde(crate = "serde_crate"))]
+    pub struct RequestQuery {
+        pub int1: i8,
+        pub int2: u8,
+        pub min_floor: u8,
+        pub max_floor: u8,
+        pub seq: Vec<()>,
+        pub char_1: i8,
+        pub char_2: i8,
+        pub winner: u8,
+        pub int8: u8,
+        pub int9: u8,
     }
     #[derive(Debug, Clone)]
     #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
-    pub struct Header {
+    pub struct ReplayResponse {
+        pub header: ResponseHeader,
+        pub body: ResponseBody,
+    }
+    #[derive(Debug, Clone)]
+    #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
+    pub struct ResponseHeader {
         pub id: String,
         pub int1: i32,
         pub date: String,
@@ -409,7 +493,7 @@ mod messagepack {
 
     #[derive(Debug, Clone)]
     #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
-    pub struct Body {
+    pub struct ResponseBody {
         pub int1: i32,
         pub int2: i32,
         pub int3: i32,
@@ -487,5 +571,39 @@ mod tests {
         assert!(errors.is_empty(), "Got errors: {:#?}", errors);
 
         expect_test::expect_file!["../test_data/replay_response_2.txt"].assert_debug_eq(&matches);
+    }
+
+    #[test]
+    fn test_query() {
+        use messagepack::*;
+
+        let query = ReplayRequest {
+            header: RequestHeader {
+                string1: "211027113123008384".into(),
+                string2: "61a5ed4f461c2".into(),
+                int1: 2,
+                version: "0.1.0".into(),
+                int2: 3,
+            },
+            body: RequestBody {
+                int1: 1,
+                index: 0,
+                replays_per_page: 127,
+                query: RequestQuery {
+                    int1: -1,
+                    int2: 0,
+                    min_floor: 1,
+                    max_floor: 99,
+                    seq: vec![],
+                    char_1: -1,
+                    char_2: -1,
+                    winner: 0,
+                    int8: 0,
+                    int9: 1,
+                },
+            },
+        };
+
+        expect_test::expect![["9295B2323131303237313133313233303038333834AD3631613565643466343631633202A5302E312E30039401007F9AFF00016390FFFF000001"]].assert_eq(&query.to_hex())
     }
 }
