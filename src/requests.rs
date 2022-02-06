@@ -166,6 +166,14 @@ impl TryFrom<(Character, messagepack::Player)> for Player {
         })
     }
 }
+
+#[cfg(test)]
+fn from_hex(hex: &str) -> Vec<u8> {
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+        .collect::<Vec<_>>()
+}
 mod messagepack {
     use super::*;
 
@@ -182,10 +190,7 @@ mod messagepack {
     impl ReplayRequest {
         #[cfg(test)]
         pub fn from_hex(hex: &str) -> Result<Self> {
-            let bytes = (0..hex.len())
-                .step_by(2)
-                .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
-                .collect::<Vec<_>>();
+            let bytes = from_hex(hex);
             Ok(rmp_serde::decode::from_slice(&bytes)?)
         }
 
@@ -265,6 +270,13 @@ mod messagepack {
         Undesignated = -1,
         PlayerOne,
     }
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(crate = "serde_crate")]
+    pub enum BestBout {
+        None,
+        BestBout,
+        Favorite,
+    }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
@@ -326,9 +338,9 @@ mod messagepack {
         #[serde(deserialize_with = "deserialize_date_time")]
         pub date: chrono::DateTime<Utc>,
         pub int7: UnknownInteger,
-        pub int8: UnknownInteger,
-        pub int9: UnknownInteger,
-        pub int10: UnknownInteger,
+        pub views: u64,
+        pub best_bout: BestBout,
+        pub likes: u64,
     }
 
     #[derive(Debug, Clone, Deserialize)]
@@ -394,6 +406,16 @@ mod tests {
         assert!(errors.is_empty(), "Got errors: {:#?}", errors);
 
         expect_test::expect_file!["../test_data/replay_response_2.txt"].assert_debug_eq(&matches);
+    }
+
+    #[test]
+    fn test_parse_response_3() {
+        // This test used to miss one replay before true messagepack parsing
+        const RESPONSE: &[u8] = b"\x92\x98\xad61ffa1560e387\0\xb32022/02/06 10:22:14\xa50.1.0\xa50.0.2\xa50.0.2\xa0\xa0\x94\0\x04\n\x9a\x9d\xcf\x03\x0e\n\xb0\x95(\xcd2\x07c\x06\x07\x95\xb2210611073056107537\xa3Mar\xb176561197993198569\xaf110000101f683e9\t\x95\xb2210611121603560347\xadLuna Goodgirl\xb176561197977446342\xaf1100001010627c6\t\x01\xb32022-01-25 18:53:19\x01\x01\x01\x01\x9d\xcf\x03\r\xfb5{F6\"\x07c\x06\x07\x95\xb2210611073056107537\xa3Mar\xb176561197993198569\xaf110000101f683e9\t\x95\xb2210611162113864298\xa8Lizardos\xb176561197994492361\xaf1100001020a41c9\t\x01\xb32022-01-08 16:39:30\x01\x03\x01\x01\x9d\xcf\x02\xed\xbb\xb9\x7f\xdd?!\x06c\x06\x05\x95\xb2210611073056107537\xa3Mar\xb176561197993198569\xaf110000101f683e9\t\x95\xb2210611095248078392\xa9MOMO MODY\xb176561198156904572\xaf11000010bb8787c\t\x02\xb32021-10-31 16:29:42\x01\x03\x02\0\x9d\xcf\x02\xed\xa2D\x07\x98m\x1a\x05\n\x06\x0b\x95\xb2210611073056107537\xa3Mar\xb176561197993198569\xaf110000101f683e9\t\x95\xb2210611083023337322\xadPunishedVenom\xb176561198043848438\xaf110000104fb5ef6\t\x02\xb32021-10-03 17:06:24\x01\0\x02\0\x9d\xcf\x02\xec\xef\x05\xe7\xe6\xf1\x88\x04\n\x08\x07\x95\xb2210611073056107537\xa3Mar\xb176561197993198569\xaf110000101f683e9\t\x95\xb2210611072758921052\xaageorgekupo\xb176561198054369781\xaf1100001059be9f5\t\x02\xb32021-08-06 09:12:22\x01\0\x02\0\x9d\xcf\x02\xec\xed6\xf1\xea8\xbe\x04\n\x08\x0b\x95\xb2210611073056107537\xa3Mar\xb176561197993198569\xaf110000101f683e9\x08\x95\xb2210618173410867109\xabDominimator\xb176561197994451661\xaf11000010209a2cd\t\x02\xb32021-08-04 10:28:20\x01\0\x02\0\x9d\xcf\x02\xecG\xc9\xde*\x8e\xd6\x03\x07\x08\x01\x95\xb2210611073056107537\xa3Mar\xb176561197993198569\xaf110000101f683e9\x06\x95\xb2210614203011010057\xa5Hydro\xb176561198077327061\xaf110000106fa36d5\x06\x02\xb32021-06-22 21:49:19\x01\0\x02\0\x9d\xcf\x03\x0eSo\xd3qzH\tc\r\x06\x95\xb2210611114424649707\xa9Pistachio\xb176561198074756096\xaf110000106d2fc00\t\x95\xb2210611073056107537\xa3Mar\xb176561197993198569\xaf110000101f683e9\t\x02\xb32022-02-05 17:15:39\x01\0\0\0\x9d\xcf\x03\x0eSo\xbc\x9cz\x82\tc\x02\x06\x95\xb2210611151221285918\xa7Rikkumi\xb176561198117246557\xaf1100001095b565d\t\x95\xb2210611073056107537\xa3Mar\xb176561197993198569\xaf110000101f683e9\t\x02\xb32022-02-05 17:11:56\x01\0\0\0\x9d\xcf\x03\x0eSo\xae.\x18\xcc\tc\x02\x06\x95\xb2210611151221285918\xa7Rikkumi\xb176561198117246557\xaf1100001095b565d\t\x95\xb2210611073056107537\xa3Mar\xb176561197993198569\xaf110000101f683e9\t\x02\xb32022-02-05 17:09:14\x01\0\0\0";
+
+        let result = rmp_serde::decode::from_slice::<messagepack::ReplayResponse>(&RESPONSE);
+
+        expect_test::expect_file!["../test_data/replay_response_3.txt"].assert_debug_eq(&result);
     }
 
     #[test]
