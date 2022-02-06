@@ -230,7 +230,7 @@ mod messagepack {
         fn from(query: &QueryParameters<A, B, C, D, E>) -> Self {
             RequestQuery {
                 int1: -1,
-                int2: 0,
+                player_search: PlayerSearch::All,
                 min_floor: query.min_floor.to_u8(),
                 max_floor: query.max_floor.to_u8(),
                 seq: vec![],
@@ -251,9 +251,19 @@ mod messagepack {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
+    pub enum PlayerSearch {
+        All,
+        Self_,
+        Follow,
+        Rival,
+        Favorite,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(crate = "serde_crate")]
     pub struct RequestQuery {
         pub int1: UnknownInteger,
-        pub int2: UnknownInteger,
+        pub player_search: PlayerSearch,
         pub min_floor: u8,
         pub max_floor: u8,
         pub seq: Vec<()>,
@@ -395,7 +405,7 @@ mod tests {
                 replays_per_page: 127,
                 query: RequestQuery {
                     int1: -1,
-                    int2: 0,
+                    player_search: PlayerSearch::All,
                     min_floor: 1,
                     max_floor: 99,
                     seq: vec![],
@@ -408,12 +418,12 @@ mod tests {
             },
         };
 
-        expect_test::expect![["9295B2323131303237313133313233303038333834AD3631613565643466343631633202A5302E312E30039401007F9AFF00016390FFFF000001"]].assert_eq(&query.to_hex())
+        expect_test::expect![[r#"9295B2323131303237313133313233303038333834AD3631613565643466343631633202A5302E312E30039401007F9AFFA3416C6C016390FFFF000001"#]].assert_eq(&query.to_hex())
     }
 
     #[test]
     fn decode_request() {
-        let request = messagepack::ReplayRequest::from_hex("9295b2323130363131303733303536313037353337ad3631666639366131653762353902a5302e312e30039401000a9aff01016390ffff000001").unwrap();
+        let request = messagepack::ReplayRequest::from_hex("9295b2323130363131303733303536313037353337ad3631666639366131653762353902a5302e312e30039401000a9aff02016390ffff000001").unwrap();
         expect_test::expect![[r#"
             ReplayRequest {
                 header: RequestHeader {
@@ -429,7 +439,7 @@ mod tests {
                     replays_per_page: 10,
                     query: RequestQuery {
                         int1: -1,
-                        int2: 1,
+                        player_search: Follow,
                         min_floor: 1,
                         max_floor: 99,
                         seq: [],
@@ -441,6 +451,7 @@ mod tests {
                     },
                 },
             }
-        "#]].assert_debug_eq(&request);
+        "#]]
+        .assert_debug_eq(&request);
     }
 }
