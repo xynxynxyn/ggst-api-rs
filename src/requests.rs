@@ -176,6 +176,9 @@ mod messagepack {
 
     use crate::Character;
 
+    // An integer that we don't know the purpose of in the format. Signed and large to prevent unexpectedly large values from causing errors
+    type UnknownInteger = i64;
+
     impl ReplayRequest {
         pub fn to_hex(&self) -> String {
             use std::fmt::Write;
@@ -200,15 +203,15 @@ mod messagepack {
     pub struct RequestHeader {
         pub string1: String,
         pub string2: String,
-        pub int1: i32,
+        pub int1: UnknownInteger,
         pub version: String,
-        pub int2: i32,
+        pub int2: UnknownInteger,
     }
 
     #[derive(Debug, Clone, Serialize)]
     #[serde(crate = "serde_crate")]
     pub struct RequestBody {
-        pub int1: u8,
+        pub int1: UnknownInteger,
         pub index: usize,
         pub replays_per_page: usize,
         pub query: RequestQuery,
@@ -240,16 +243,16 @@ mod messagepack {
     #[derive(Debug, Clone, Serialize)]
     #[serde(crate = "serde_crate")]
     pub struct RequestQuery {
-        pub int1: i8,
-        pub int2: u8,
+        pub int1: UnknownInteger,
+        pub int2: UnknownInteger,
         pub min_floor: u8,
         pub max_floor: u8,
         pub seq: Vec<()>,
         pub char_1: i8,
         pub char_2: i8,
         pub winner: u8,
-        pub int8: u8,
-        pub int9: u8,
+        pub int8: UnknownInteger,
+        pub int9: UnknownInteger,
     }
     #[derive(Debug, Clone, Deserialize)]
     #[serde(crate = "serde_crate")]
@@ -262,7 +265,7 @@ mod messagepack {
     #[serde(crate = "serde_crate")]
     pub struct ResponseHeader {
         pub id: String,
-        pub int1: i32,
+        pub int1: UnknownInteger,
         pub date: String,
         pub version1: String,
         pub version2: String,
@@ -274,9 +277,9 @@ mod messagepack {
     #[derive(Debug, Clone, Deserialize)]
     #[serde(crate = "serde_crate")]
     pub struct ResponseBody {
-        pub int1: i32,
-        pub int2: i32,
-        pub int3: i32,
+        pub int1: UnknownInteger,
+        pub int2: UnknownInteger,
+        pub int3: UnknownInteger,
         pub replays: Vec<Replay>,
     }
 
@@ -284,7 +287,7 @@ mod messagepack {
     #[serde(crate = "serde_crate")]
     pub struct Replay {
         pub int1: u64,
-        pub int2: i32,
+        pub int2: UnknownInteger,
         pub floor: u8,
         pub player1_character: Character,
         pub player2_character: Character,
@@ -294,10 +297,10 @@ mod messagepack {
 
         #[serde(deserialize_with = "deserialize_date_time")]
         pub date: chrono::DateTime<Utc>,
-        pub int7: i32,
-        pub int8: i32,
-        pub int9: i32,
-        pub int10: i32,
+        pub int7: UnknownInteger,
+        pub int8: UnknownInteger,
+        pub int9: UnknownInteger,
+        pub int10: UnknownInteger,
     }
 
     #[derive(Debug, Clone, Deserialize)]
@@ -307,7 +310,7 @@ mod messagepack {
         pub name: String,
         pub string1: String,
         pub string2: String,
-        pub int1: i32,
+        pub int1: UnknownInteger,
     }
 
     fn deserialize_date_time<'de, D>(

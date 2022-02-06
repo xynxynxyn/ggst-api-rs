@@ -4,7 +4,6 @@ pub mod requests;
 use chrono::prelude::*;
 use derivative::*;
 use error::*;
-#[cfg(feature = "serde")]
 use serde_crate::{Deserialize, Serialize};
 use std::fmt;
 use std::marker::PhantomData;
@@ -112,12 +111,8 @@ impl fmt::Display for Match {
 }
 
 /// Enum for characters in the game
-#[derive(Hash, Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
+#[derive(Hash, Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(crate = "serde_crate")]
 pub enum Character {
     Sol,
     Ky,
