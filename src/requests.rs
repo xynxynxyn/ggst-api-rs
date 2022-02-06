@@ -82,7 +82,7 @@ pub async fn get_replays<A, B, C, D, E>(
         // Construct the query string
         let query_string = messagepack::ReplayRequest {
             header: messagepack::RequestHeader {
-                string1: "211027113123008384".into(),
+                player_id: "211027113123008384".into(),
                 string2: "61a5ed4f461c2".into(),
                 int1: 2,
                 version: "0.1.0".into(),
@@ -216,7 +216,8 @@ mod messagepack {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
     pub struct RequestHeader {
-        pub string1: String,
+        // The id of the player making the request (so the server can figure out the follow/rival etc for `PlayerSearch`)
+        pub player_id: String,
         pub string2: String,
         pub int1: UnknownInteger,
         pub version: String,
@@ -455,7 +456,7 @@ mod tests {
 
         let query = ReplayRequest {
             header: RequestHeader {
-                string1: "211027113123008384".into(),
+                player_id: "211027113123008384".into(),
                 string2: "61a5ed4f461c2".into(),
                 int1: 2,
                 version: "0.1.0".into(),
@@ -489,7 +490,7 @@ mod tests {
         expect_test::expect![[r#"
             ReplayRequest {
                 header: RequestHeader {
-                    string1: "210611073056107537",
+                    player_id: "210611073056107537",
                     string2: "61ff96a1e7b59",
                     int1: 2,
                     version: "0.1.0",
