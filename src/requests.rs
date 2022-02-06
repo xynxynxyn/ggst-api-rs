@@ -243,7 +243,7 @@ mod messagepack {
                         Winner::Player2 => 0x02,
                     },
                 ),
-                int8: 0,
+                prioritize_best_bout: 0,
                 int9: 1,
             }
         }
@@ -261,6 +261,13 @@ mod messagepack {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
+    pub enum RequestWinner {
+        Undesignated = -1,
+        PlayerOne,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(crate = "serde_crate")]
     pub struct RequestQuery {
         pub int1: UnknownInteger,
         pub player_search: PlayerSearch,
@@ -269,8 +276,10 @@ mod messagepack {
         pub seq: Vec<()>,
         pub char_1: i8,
         pub char_2: i8,
+        // 0 for undesignated, 1 for player 1
         pub winner: u8,
-        pub int8: UnknownInteger,
+        // 0/1 for false/true
+        pub prioritize_best_bout: u8,
         pub int9: UnknownInteger,
     }
     #[derive(Debug, Clone, Deserialize)]
@@ -412,7 +421,7 @@ mod tests {
                     char_1: -1,
                     char_2: -1,
                     winner: 0,
-                    int8: 0,
+                    prioritize_best_bout: 0,
                     int9: 1,
                 },
             },
@@ -423,7 +432,7 @@ mod tests {
 
     #[test]
     fn decode_request() {
-        let request = messagepack::ReplayRequest::from_hex("9295b2323130363131303733303536313037353337ad3631666639366131653762353902a5302e312e30039401000a9aff02016390ffff000001").unwrap();
+        let request = messagepack::ReplayRequest::from_hex("9295b2323130363131303733303536313037353337ad3631666639366131653762353902a5302e312e30039401000a9aff02016390ffff000101").unwrap();
         expect_test::expect![[r#"
             ReplayRequest {
                 header: RequestHeader {
@@ -446,7 +455,7 @@ mod tests {
                         char_1: -1,
                         char_2: -1,
                         winner: 0,
-                        int8: 0,
+                        prioritize_best_bout: 1,
                         int9: 1,
                     },
                 },
