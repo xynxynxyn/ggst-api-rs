@@ -188,15 +188,15 @@ mod messagepack {
         }
     }
 
-    #[derive(Debug, Clone)]
-    #[cfg_attr(feature = "serde", derive(Serialize), serde(crate = "serde_crate"))]
+    #[derive(Debug, Clone, Serialize)]
+    #[serde(crate = "serde_crate")]
     pub struct ReplayRequest {
         pub header: RequestHeader,
         pub body: RequestBody,
     }
 
-    #[derive(Debug, Clone)]
-    #[cfg_attr(feature = "serde", derive(Serialize), serde(crate = "serde_crate"))]
+    #[derive(Debug, Clone, Serialize)]
+    #[serde(crate = "serde_crate")]
     pub struct RequestHeader {
         pub string1: String,
         pub string2: String,
@@ -205,8 +205,8 @@ mod messagepack {
         pub int2: i32,
     }
 
-    #[derive(Debug, Clone)]
-    #[cfg_attr(feature = "serde", derive(Serialize), serde(crate = "serde_crate"))]
+    #[derive(Debug, Clone, Serialize)]
+    #[serde(crate = "serde_crate")]
     pub struct RequestBody {
         pub int1: u8,
         pub index: usize,
@@ -237,8 +237,8 @@ mod messagepack {
         }
     }
 
-    #[derive(Debug, Clone)]
-    #[cfg_attr(feature = "serde", derive(Serialize), serde(crate = "serde_crate"))]
+    #[derive(Debug, Clone, Serialize)]
+    #[serde(crate = "serde_crate")]
     pub struct RequestQuery {
         pub int1: i8,
         pub int2: u8,
@@ -251,14 +251,15 @@ mod messagepack {
         pub int8: u8,
         pub int9: u8,
     }
-    #[derive(Debug, Clone)]
-    #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(crate = "serde_crate")]
     pub struct ReplayResponse {
         pub header: ResponseHeader,
         pub body: ResponseBody,
     }
-    #[derive(Debug, Clone)]
-    #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(crate = "serde_crate")]
     pub struct ResponseHeader {
         pub id: String,
         pub int1: i32,
@@ -270,16 +271,17 @@ mod messagepack {
         pub string2: String,
     }
 
-    #[derive(Debug, Clone)]
-    #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(crate = "serde_crate")]
     pub struct ResponseBody {
         pub int1: i32,
         pub int2: i32,
         pub int3: i32,
         pub replays: Vec<Replay>,
     }
-    #[derive(Debug, Clone)]
-    #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(crate = "serde_crate")]
     pub struct Replay {
         pub int1: u64,
         pub int2: i32,
@@ -298,8 +300,8 @@ mod messagepack {
         pub int10: i32,
     }
 
-    #[derive(Debug, Clone)]
-    #[cfg_attr(feature = "serde", derive(Deserialize), serde(crate = "serde_crate"))]
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(crate = "serde_crate")]
     pub struct Player {
         pub id: String,
         pub name: String,
