@@ -16,6 +16,7 @@ bytes = "1"
 
 [dev-dependencies]
 expect-test = "1"
+serde_path_to_error = "0.1"
 
 [features]
 serde = ["chrono/serde"]

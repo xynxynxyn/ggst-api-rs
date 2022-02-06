@@ -271,13 +271,6 @@ mod messagepack {
         Undesignated = -1,
         PlayerOne,
     }
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    #[serde(crate = "serde_crate")]
-    pub enum BestBout {
-        None,
-        BestBout,
-        Favorite,
-    }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
@@ -343,7 +336,7 @@ mod messagepack {
         pub date: chrono::DateTime<Utc>,
         pub int7: UnknownInteger,
         pub views: u64,
-        pub best_bout: BestBout,
+        pub int8: UnknownInteger,
         pub likes: u64,
     }
 
@@ -442,6 +435,18 @@ mod tests {
         let result = rmp_serde::decode::from_slice::<messagepack::ReplayResponse>(&RESPONSE);
 
         expect_test::expect_file!["../test_data/replay_response_3.txt"].assert_debug_eq(&result);
+    }
+
+    #[test]
+    fn test_parse_response_4() {
+        // This test used to miss one replay before true messagepack parsing
+        const RESPONSE: &[u8] = b"\x92\x98\xad61ffa6c3dce48\x00\xb32022/02/06 10:45:23\xa50.1.0\xa50.0.2\xa50.0.2\xa0\xa0\x94\x00\x00\x14\xdc\x00\x14\x9d\xcf\x03\x0eTH\xb4\x9fm\xae\tc\x0c\x00\x95\xb2210612125643406306\xa6\xe3\x81\xab\xe3\x81\x97\xb176561198128581292\xaf11000010a084aac\t\x95\xb2210812201532300023\xa4Aya_\xb176561198082485936\xaf11000010748eeb0\t\x01\xb32022-02-06 10:30:35\x01\x00\x04\x00\x9d\xcf\x03\x0eTH\xb4\xe79|\t\x07\x0e\r\x95\xb2210615052252624822\xa7kenwood\xb176561197966537714\xaf1100001005fb3f2\x06\x95\xb2210611154646317449\xadSacral Choppa\xb176561199006810534\xaf11000013e6101a6\x06\x01\xb32022-02-06 10:30:34\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb4\xb6\\\xe7\t\x08\x12\x02\x95\xb2210612021027770109\xafSEAFOOD_TEACHER\xb176561198113434879\xaf110000109212cff\x07\x95\xb2211207080045848646\xa4Snao\xb176561199222646653\xaf11000014b3e677d\x07\x02\xb32022-02-06 10:30:33\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb4\xb5*e\tc\x07\x00\x95\xb2210613140711574755\xac\xed\x95\xa0\xeb\x9d\xbc\xed\x94\xbc\xeb\x87\xa8\xb176561198864345829\xaf110000135e32ae5\t\x95\xb2210611143729214686\xa3kim\xb176561198854003264\xaf110000135455a40\t\x01\xb32022-02-06 10:30:33\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb4\xb0:E\tc\x0c\t\x95\xb2210611072136083266\xafKiiwiFrankenCop\xb176561198895319862\xaf110000137bbcb36\t\x95\xb2210611182927774405\xa9Mr. Quick\xb176561198069518514\xaf1100001068310b2\t\x02\xb32022-02-06 10:30:32\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb4\xaf[Z\t\x06\x0f\x12\x95\xb2220121231856937297\xaaThoraxe237\xb176561198052581773\xaf11000010580a18d\x05\x95\xb2210613005107516525\xa8Keshabro\xb176561198027398330\xaf110000104005cba\x04\x01\xb32022-02-06 10:30:32\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb4\xb0\xbd\x1f\t\x08\x0c\n\x95\xb2210912022814996615\xa7highlow\xb176561199205533603\xaf11000014a3947a3\x07\x95\xb2210611085648495430\xa8nametake\xb176561199149370171\xaf110000146e04b3b\x07\x01\xb32022-02-06 10:30:31\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb4\xa8\x8c\x06\t\t\x00\x05\x95\xb2210611073057022504\xa8AlphaMJB\xb176561198305607584\xaf110000114957fa0\x08\x95\xb2220127151856058147\xaf\xe3\x82\xaf\xe3\x83\xa9\xe3\x83\x83\xe3\x82\xb7\xe3\x83\xa5\xb176561198165187796\xaf11000010c36dcd4\x08\x02\xb32022-02-06 10:30:29\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb4\x807d\t\n\r\x12\x95\xb2210611084139551457\xaaDivin#1214\xb176561198077941403\xaf11000010703969b\t\x95\xb2210611101724829815\xaeRez:Gilgystera\xb176561198132106791\xaf11000010a3e1627\t\x01\xb32022-02-06 10:30:29\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb4d\r\xce\t\n\x07\x12\x95\xb2211222225908577640\xa7Cotezzo\xb176561198421841583\xaf11000011b8316af\x08\x95\xb2210611071849576512\xa7Taiga2k\xb176561198040834092\xaf110000104cd602c\x08\x01\xb32022-02-06 10:30:27\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb3\xbeV\xbd\t\n\x0c\r\x95\xb2210721083447239477\xac\xed\x96\x89\xeb\xb3\xb5\xed\x9a\x8c\xeb\xa1\x9c\xb176561198058727476\xaf110000105de6834\t\x95\xb2210828085855460099\xb8\xe4\xbf\xa1\xe5\xb7\x9e\xe7\x84\xa1\xe6\x95\xb5\xe3\x81\xae\xe6\xa1\x83\xe5\xa4\xaa\xe9\x83\x8e\xb176561198138785803\xaf11000010aa4000b\x08\x02\xb32022-02-06 10:30:26\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb47\x1f+\t\x08\x02\x00\x95\xb2210612121526544046\xa6\xe3\x81\xb5\xe3\x82\x8f\xb176561199174118419\xaf11000014859ec13\x07\x95\xb2210611094539865120\xa3lan\xb176561198317011665\xaf1100001154382d1\x07\x01\xb32022-02-06 10:30:25\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb4\x1b\x8ds\t\t\x0b\x00\x95\xb2210617234253473467\xaeballsack_penis\xb176561198055995469\xaf110000105b4b84d\x08\x95\xb2210611071427578001\xa6Xsaber\xb176561198101112765\xaf1100001086527bd\x08\x02\xb32022-02-06 10:30:22\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb4\x0e(\x04\tc\x12\x00\x95\xb2210811113031312233\xac\xe3\x81\xbe\xe3\x81\x9f\xe3\x82\x8f\xe3\x82\x8a\xb176561198196931129\xaf11000010e1b3a39\t\x95\xb2210811153641989054\xb2\xe3\x81\x99\xe3\x81\xb4\xe3\x81\x8b\xe3\x81\xa1\xe3\x82\x83\xe3\x82\x93\xb176561199123357584\xaf110000145535f90\t\x02\xb32022-02-06 10:30:22\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb4\x0e\\\xe6\tc\x00\x06\x95\xb2210611145942951029\xabPlaceholder\xb176561198123582712\xaf110000109bc04f8\t\x95\xb2210613043239093829\xadMouljaveel-PC\xb176561198105342214\xaf110000108a5b106\t\x02\xb32022-02-06 10:30:21\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb4\x04\xfb7\t\n\x0e\x0b\x95\xb2210729195702260121\xaemystery cruise\xb176561197980107402\xaf1100001012ec28a\t\x95\xb2211231003426173119\xaaWilling555\xb176561198158500699\xaf11000010bd0d35b\t\x01\xb32022-02-06 10:30:20\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb2\xd2\xdb\x17\t\n\x01\x12\x95\xb2210611080232191761\xaaKOIBITO\xef\xbc\x81\xb176561198159124250\xaf11000010bda571a\t\x95\xb2210708134321624142\xa5loser\xb176561198207840299\xaf11000010ec1b02b\t\x01\xb32022-02-06 10:30:20\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb3\xc3y\xcc\t\n\x12\x0c\x95\xb2220117164656998999\xa4syan\xb176561199204162898\xaf11000014a245d52\t\x95\xb2210618050710408587\xb8\xe5\x90\x89\xe7\x94\xb0\xe3\x83\x92\xe3\x83\xad\xe3\x83\x95\xe3\x83\x9f\xe3\x81\xae\xe5\xa5\xb3\xb176561198395837298\xaf110000119f64b72\t\x02\xb32022-02-06 10:30:18\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xb3\xbb^K\t\x07\r\x01\x95\xb2210612065256836370\xa9Aquascape\xb176561198108384313\xaf110000108d41c39\x06\x95\xb2211207004536721762\xacBaldilocksTM\xb176561199057152272\xaf110000141612910\x06\x01\xb32022-02-06 10:30:17\x01\x00\x00\x00\x9d\xcf\x03\x0eTH\xbb.B\xa7\t\n\x12\x01\x95\xb2210611155821768595\xadJ A I G E R E\xb176561198835237053\xaf1100001342700bd\t\x95\xb2210611133136888481\xaf\xe3\x81\x95\xe3\x82\x84\xe3\x81\x8b\xe3\x81\x95\xe3\x82\x93\xb176561198006011479\xaf110000102ba0657\t\x02\xb32022-02-06 10:30:16\x01\x00\x00\x00";
+
+        let mut de = rmp_serde::decode::Deserializer::from_read_ref(RESPONSE);
+        let result = serde_path_to_error::deserialize::<_, messagepack::ReplayResponse>(&mut de)
+            .map_err(|err| err.to_string());
+
+        expect_test::expect_file!["../test_data/replay_response_4.txt"].assert_debug_eq(&result);
     }
 
     #[test]
