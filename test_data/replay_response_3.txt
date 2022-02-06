@@ -18,7 +18,7 @@ Ok(
                 Replay {
                     int1: 220125185320734002,
                     int2: 7,
-                    floor: 99,
+                    floor: Celestial,
                     player1_character: Faust,
                     player2_character: Millia,
                     player1: Player {
@@ -45,7 +45,7 @@ Ok(
                 Replay {
                     int1: 220108163931059746,
                     int2: 7,
-                    floor: 99,
+                    floor: Celestial,
                     player1_character: Faust,
                     player2_character: Millia,
                     player1: Player {
@@ -72,7 +72,7 @@ Ok(
                 Replay {
                     int1: 211031162944831265,
                     int2: 6,
-                    floor: 99,
+                    floor: Celestial,
                     player1_character: Faust,
                     player2_character: Potemkin,
                     player1: Player {
@@ -99,7 +99,7 @@ Ok(
                 Replay {
                     int1: 211003170625187098,
                     int2: 5,
-                    floor: 10,
+                    floor: F10,
                     player1_character: Faust,
                     player2_character: Nagoriyuki,
                     player1: Player {
@@ -126,7 +126,7 @@ Ok(
                 Replay {
                     int1: 210806091224117640,
                     int2: 4,
-                    floor: 10,
+                    floor: F10,
                     player1_character: Zato,
                     player2_character: Millia,
                     player1: Player {
@@ -153,7 +153,7 @@ Ok(
                 Replay {
                     int1: 210804102822246590,
                     int2: 4,
-                    floor: 10,
+                    floor: F10,
                     player1_character: Zato,
                     player2_character: Nagoriyuki,
                     player1: Player {
@@ -180,7 +180,7 @@ Ok(
                 Replay {
                     int1: 210622214920900310,
                     int2: 3,
-                    floor: 7,
+                    floor: F7,
                     player1_character: Zato,
                     player2_character: Ky,
                     player1: Player {
@@ -207,7 +207,7 @@ Ok(
                 Replay {
                     int1: 220205171541637704,
                     int2: 9,
-                    floor: 99,
+                    floor: Celestial,
                     player1_character: Anji,
                     player2_character: Faust,
                     player1: Player {
@@ -234,7 +234,7 @@ Ok(
                 Replay {
                     int1: 220205171158579842,
                     int2: 9,
-                    floor: 99,
+                    floor: Celestial,
                     player1_character: May,
                     player2_character: Faust,
                     player1: Player {
@@ -261,7 +261,7 @@ Ok(
                 Replay {
                     int1: 220205170916464844,
                     int2: 9,
-                    floor: 99,
+                    floor: Celestial,
                     player1_character: May,
                     player2_character: Faust,
                     player1: Player {

@@ -142,7 +142,7 @@ fn parse_response(
 
 fn match_from_replay(replay: messagepack::Replay) -> Result<Match> {
     Ok(Match {
-        floor: Floor::from_u8(replay.floor)?,
+        floor: replay.floor,
         timestamp: replay.date,
         players: (
             Player::try_from((replay.player1_character, replay.player1))?,
@@ -179,6 +179,7 @@ mod messagepack {
 
     use serde_crate::{
         de::{Deserializer, Error as _},
+        ser::Serializer,
         Deserialize,
     };
 
@@ -236,8 +237,8 @@ mod messagepack {
             RequestQuery {
                 int1: -1,
                 player_search: PlayerSearch::All,
-                min_floor: query.min_floor.to_u8(),
-                max_floor: query.max_floor.to_u8(),
+                min_floor: query.min_floor,
+                max_floor: query.max_floor,
                 seq: vec![],
                 char_1: query.char_1.map_or_else(|| -1, |c| c.to_u8() as i8),
                 char_2: query.char_2.map_or_else(|| -1, |c| c.to_u8() as i8),
@@ -283,8 +284,10 @@ mod messagepack {
     pub struct RequestQuery {
         pub int1: UnknownInteger,
         pub player_search: PlayerSearch,
-        pub min_floor: u8,
-        pub max_floor: u8,
+        #[serde(with = "floor")]
+        pub min_floor: Floor,
+        #[serde(with = "floor")]
+        pub max_floor: Floor,
         pub seq: Vec<()>,
         pub char_1: i8,
         pub char_2: i8,
@@ -328,7 +331,8 @@ mod messagepack {
     pub struct Replay {
         pub int1: u64,
         pub int2: UnknownInteger,
-        pub floor: u8,
+        #[serde(with = "floor")]
+        pub floor: Floor,
         pub player1_character: Character,
         pub player2_character: Character,
         pub player1: Player,
@@ -364,6 +368,28 @@ mod messagepack {
             NaiveDateTime::parse_from_str(&time, "%Y-%m-%d %H:%M:%S").map_err(D::Error::custom)?,
             Utc,
         ))
+    }
+
+    mod floor {
+        use super::*;
+
+        pub(crate) fn deserialize<'de, D>(deserializer: D) -> std::result::Result<Floor, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let b = u8::deserialize(deserializer)?;
+            Ok(Floor::from_u8(b).map_err(D::Error::custom)?)
+        }
+
+        pub(crate) fn serialize<S>(
+            value: &Floor,
+            serializer: S,
+        ) -> std::result::Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            value.to_u8().serialize(serializer)
+        }
     }
 }
 
@@ -437,8 +463,8 @@ mod tests {
                 query: RequestQuery {
                     int1: -1,
                     player_search: PlayerSearch::All,
-                    min_floor: 1,
-                    max_floor: 99,
+                    min_floor: Floor::F1,
+                    max_floor: Floor::Celestial,
                     seq: vec![],
                     char_1: -1,
                     char_2: -1,
@@ -471,8 +497,8 @@ mod tests {
                     query: RequestQuery {
                         int1: -1,
                         player_search: Follow,
-                        min_floor: 1,
-                        max_floor: 99,
+                        min_floor: F1,
+                        max_floor: Celestial,
                         seq: [],
                         char_1: -1,
                         char_2: -1,
