@@ -1,8 +1,6 @@
 use crate::{error::*, *};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use lazy_static::lazy_static;
-use regex::bytes;
 use reqwest::{self, header};
 use std::collections::BTreeSet;
 use std::str;
@@ -116,7 +114,7 @@ pub async fn get_replays<A, B, C, D, E>(
     Ok((matches.into_iter(), errors.into_iter()))
 }
 
-fn parse_messagepack_response(
+fn parse_response(
     matches: &mut BTreeSet<Match>,
     errors: &mut Vec<ParseError>,
     bytes: &[u8],
@@ -168,225 +166,6 @@ impl TryFrom<(Character, messagepack::Player)> for Player {
         })
     }
 }
-
-fn parse_response(
-    matches: &mut BTreeSet<Match>,
-    errors: &mut Vec<ParseError>,
-    bytes: &[u8],
-) -> bool {
-    // Regex's to parse the raw bytes received
-    lazy_static! {
-        // This separates the matches from each other
-        static ref MATCH_SEP: bytes::Regex =
-            bytes::Regex::new(r"(?-u)\x01\x00\x00\x00")
-                .expect("Could not compile regex");
-    }
-
-    // Check if only the header is present
-    // If yes then we found no matches and return early
-    // The function should not fail but rather return an empty set or what was already found
-    if bytes.len() < 63 {
-        return false;
-    }
-
-    // Remove the first 61 bytes, they are static header, we don't need them
-    let bytes = &bytes[61..];
-
-    // Split on the match separator and keep non empty results only
-    // This should give us 10 separate matches
-    for raw_match in MATCH_SEP.split(&bytes).filter(|b| !b.is_empty()) {
-        // Insert it into the set
-        match parse_match(raw_match) {
-            Ok(m) => {
-                matches.insert(m);
-            }
-            Err(e) => {
-                errors.push(ParseError::new(show_buf(raw_match), e));
-            }
-        };
-    }
-
-    true
-}
-
-fn parse_match(raw_match: &[u8]) -> Result<Match> {
-    // The separator which separates data within a match segment
-    lazy_static! {
-        static ref PLAYER_DATA_START: bytes::Regex =
-            bytes::Regex::new(r"(?-u)\x95\xb2").expect("Could not compile regex");
-    }
-    // Structure of the data to be extracted:
-    // We have three sections that have to be parsed
-    // Section 1: {floor}{p1_char}{p2_char}
-    // Section 2: \x95\xb2{p1_id [18 chars]}\xa_{p1_name}\xb1{p1_some_number}\xaf{p1_online_id}\x07
-    // Section 3: \x95\xb2{p2_id}\xa_{p2_name}\xb1{p2_some_number}\xaf{p2_online_id}\t{winner}\xb3{timestamp}
-
-    // Split the match data on the player separator
-    let mut data = PLAYER_DATA_START
-        .split(raw_match)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .take(3)
-        .rev();
-
-    // Section 1
-    let (floor, p1_char, p2_char) = match data.next() {
-        Some(b) => {
-            let n = b.len();
-            if n < 3 {
-                return Err(Error::UnexpectedResponse(
-                    "first data part does not have 3 bytes",
-                ));
-            }
-            (b[n - 3], b[n - 2], b[n - 1])
-        }
-        None => {
-            return Err(Error::UnexpectedResponse(
-                "could not find first data part of response",
-            ))
-        }
-    };
-
-    // Section 2
-    let (p1_id, p1_name) = match data.next() {
-        Some(b) => {
-            // We check if the array is long enough
-            // it has to be at least 18 characters for the player user_id
-            // one character for the separator \xa_ and then at least 1 byte for
-            // the username
-            if b.len() < 20 {
-                return Err(Error::UnexpectedResponse(
-                    "second data part does not have 20 bytes",
-                ));
-            }
-
-            let name = match b[19..].split(|f| *f == b'\xb1').next() {
-                Some(name_bytes) => String::from_utf8_lossy(name_bytes),
-                None => return Err(Error::UnexpectedResponse("could not parse player1 name")),
-            };
-            (id_from_bytes(&b[0..18])?, name)
-        }
-        None => {
-            return Err(Error::UnexpectedResponse(
-                "could not find second data part of response",
-            ))
-        }
-    };
-
-    // Section 3
-    let (p2_id, p2_name, winner, time) = match data.next() {
-        Some(b) => {
-            // We check if the array is long enough, 76 characters required for a 1 byte
-            // username, it has to be at least 76 characters for the player user_id, online_id,
-            // timestamp, the other number and the winner indicator and separators
-            // and then at least 1 byte for the username
-            // There do exist weird edge cases where the third data part does not contain
-            // an online id, instead it has a dummy user name, this will then take 71 bytes
-            // instead
-            if b.len() < 71 {
-                return Err(Error::UnexpectedResponse(
-                    "third data part does not have 71 bytes",
-                ));
-            }
-
-            let name = match b[19..].split(|f| *f == b'\xb1').next() {
-                Some(name_bytes) => String::from_utf8_lossy(name_bytes),
-                None => return Err(Error::UnexpectedResponse("could not find player2 name")),
-            };
-
-            // first 38 bytes are unnecessary as they contain the username and id's
-            // \xb3 is in front of the timestamp, so we split the bytes on that and take
-            // the last two segements, which should be the winner and timestamp
-            // This can break if there are more bytes behind the timestamp that contain the
-            // \xb3 byte
-            let winner_time_bytes = b[38..]
-                .split(|f| *f == b'\xb3')
-                .rev()
-                .take(2)
-                .collect::<Vec<_>>();
-            let time = match winner_time_bytes.get(0) {
-                Some(b) => {
-                    // 16 bytes before the relevant section
-                    // We need 1 byte for the winner, 1 byte for the separator and 19 bytes
-                    // for the timestamp
-                    if b.len() < 19 {
-                        return Err(Error::UnexpectedResponse(
-                            "not enough bytes to parse timestamp",
-                        ));
-                    }
-                    String::from_utf8_lossy(&b[0..19])
-                }
-                None => {
-                    return Err(Error::UnexpectedResponse(
-                        "could not split bytes to parse winner and timestamp",
-                    ))
-                }
-            };
-            let winner = match winner_time_bytes.get(1) {
-                Some(b) => match b.last() {
-                    None => {
-                        return Err(Error::UnexpectedResponse("could not find winner in bytes"))
-                    }
-                    Some(b) => b,
-                },
-                None => {
-                    return Err(Error::UnexpectedResponse(
-                        "could not split bytes to parse winner",
-                    ))
-                }
-            };
-            //(id_from_bytes(&b[0..18])?, name, winner, time)
-            (id_from_bytes(&b[0..18])?, name, winner, time)
-        }
-        None => {
-            return Err(Error::UnexpectedResponse(
-                "could not find third data part of match",
-            ))
-        }
-    };
-
-    // Construct the match
-    let m = Match {
-        floor: Floor::from_u8(floor)?,
-        timestamp: DateTime::<Utc>::from_utc(
-            NaiveDateTime::parse_from_str(&time, "%Y-%m-%d %H:%M:%S")?,
-            Utc,
-        ),
-        players: (
-            Player {
-                id: p1_id,
-                name: p1_name.to_string(),
-                character: Character::from_u8(p1_char)?,
-            },
-            Player {
-                id: p2_id,
-                name: p2_name.to_string(),
-                character: Character::from_u8(p2_char)?,
-            },
-        ),
-        winner: match winner {
-            1 => Winner::Player1,
-            2 => Winner::Player2,
-            _ => return Err(Error::ParsingBytesError("Could not parse winner")),
-        },
-    };
-
-    Ok(m)
-}
-
-// Helper function for constructing error messages to avoid issues with the borrow checker
-fn show_buf<B: AsRef<[u8]>>(buf: B) -> String {
-    use std::ascii::escape_default;
-    String::from_utf8(
-        buf.as_ref()
-            .iter()
-            .flat_map(|b| escape_default(*b))
-            .collect(),
-    )
-    .unwrap()
-}
-
 mod messagepack {
     use super::*;
 
@@ -543,6 +322,17 @@ mod messagepack {
     }
 }
 
+// Helper function for constructing error messages to avoid issues with the borrow checker
+fn show_buf<B: AsRef<[u8]>>(buf: B) -> String {
+    use std::ascii::escape_default;
+    String::from_utf8(
+        buf.as_ref()
+            .iter()
+            .flat_map(|b| escape_default(*b))
+            .collect(),
+    )
+    .unwrap()
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -552,7 +342,7 @@ mod tests {
         const RESPONSE: &[u8] = b"\x92\x98\xad61ff0796545a9\0\xb32022/02/05 23:26:14\xa50.1.0\xa50.0.2\xa50.0.2\xa0\xa0\x94\0\0\x1e\xdc\0\x1e\x9d\xcf\x03\x0eS}\x9f\x8ds\xbf\t\x08\x0c\x0b\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210818223745601103\xafSamuraiPizzaCat\xb176561199149925226\xaf110000146e8c36a\x07\x02\xb32022-02-06 04:07:59\x01\0\0\0\x9d\xcf\x03\x0eS|v\xbc6N\t\x08\x11\x0c\x95\xb2210905181006143473\xa8Haratura\xb176561198148293594\xaf11000010b3513da\x07\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:58:19\x01\0\0\0\x9d\xcf\x03\x0eS|lr}\xc1\t\x08\x11\x0c\x95\xb2210905181006143473\xa8Haratura\xb176561198148293594\xaf11000010b3513da\x07\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:56:46\x01\0\0\0\x9d\xcf\x03\x0eS|du\xac>\t\x08\x11\x0c\x95\xb2210905181006143473\xa8Haratura\xb176561198148293594\xaf11000010b3513da\x07\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:55:12\x01\0\0\0\x9d\xcf\x03\x0eSy?\x93\x83\x86\t\x06\x04\0\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2211128031436376804\xa9BundleBox\xb176561198103224698\xaf11000010885617a\x05\x01\xb32022-02-06 03:29:31\x01\0\0\0\x9d\xcf\x03\x0eSy/\xfbL\xaa\t\x06\x04\0\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2211128031436376804\xa9BundleBox\xb176561198103224698\xaf11000010885617a\x05\x01\xb32022-02-06 03:27:10\x01\0\0\0\x9d\xcf\x03\x0eSy\"\xfc\x1d\x85\t\x06\x04\0\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2211128031436376804\xa9BundleBox\xb176561198103224698\xaf11000010885617a\x05\x02\xb32022-02-06 03:24:52\x01\0\0\0\x9d\xcf\x03\x0eSx\xf9\x8c\xd2\r\t\x06\x04\x12\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2210719021019879063\xa9Sebastard\xb176561198354593280\xaf11000011780f600\x05\x01\xb32022-02-06 03:17:56\x01\0\0\0\x9d\xcf\x03\x0eSx\xedf\x1f\xf4\t\x06\x04\x12\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2210719021019879063\xa9Sebastard\xb176561198354593280\xaf11000011780f600\x05\x01\xb32022-02-06 03:15:53\x01\0\0\0\x9d\xcf\x03\x0eS{q&\x8d\x92\t\x07\x05\x0c\x95\xb2220117205818084945\xa8Bugabalu\xb176561198136737187\xaf11000010a84bda3\x05\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x02\xb32022-02-06 03:14:30\x01\0\0\0\x9d\xcf\x03\x0eSx\xe0+\xf8\xf7\t\x06\x04\x12\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2210719021019879063\xa9Sebastard\xb176561198354593280\xaf11000011780f600\x05\x02\xb32022-02-06 03:13:31\x01\0\0\0\x9d\xcf\x03\x0eS{c\xba\xc9z\t\x07\x05\x0c\x95\xb2220117205818084945\xa8Bugabalu\xb176561198136737187\xaf11000010a84bda3\x05\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:12:05\x01\0\0\0\x9d\xcf\x03\x0eS{T\xd4\\\x90\t\x07\x05\x0c\x95\xb2220117205818084945\xa8Bugabalu\xb176561198136737187\xaf11000010a84bda3\x05\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x02\xb32022-02-06 03:09:55\x01\0\0\0\x9d\xcf\x03\x0eS{Ab\xacm\t\x07\x0c\t\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210811193631829778\xaeF4ulty_R4ilgun\xb176561198351152593\xaf1100001174c75d1\x06\x02\xb32022-02-06 03:06:29\x01\0\0\0\x9d\xcf\x03\x0eS{3\xde\xb6\xa2\t\x07\x0c\t\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210811193631829778\xaeF4ulty_R4ilgun\xb176561198351152593\xaf1100001174c75d1\x06\x01\xb32022-02-06 03:04:02\x01\0\0\0\x9d\xcf\x03\x0eS{)\x03G\xe2\t\x07\x0c\t\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210811193631829778\xaeF4ulty_R4ilgun\xb176561198351152593\xaf1100001174c75d1\x06\x02\xb32022-02-06 03:02:20\x01\0\0\0\x9d\xcf\x03\x0eS}\xfct\x97\x16\t\x08\0\x12\x95\xb2210615035914519825\xa5BL4DE\xb176561199083465035\xaf110000142f2a94b\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x01\xb32022-02-06 02:24:18\x01\0\0\0\x9d\xcf\x03\x0eS}\xf3\xeb\x0c\x8a\t\x08\0\x12\x95\xb2210615035914519825\xa5BL4DE\xb176561199083465035\xaf110000142f2a94b\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x02\xb32022-02-06 02:22:34\x01\0\0\0\x9d\xcf\x03\x0eS}\xdb{XM\tc\0\x0e\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x95\xb2210612045332227791\xa8R34 I-NO\xb176561198046971684\xaf1100001052b0724\t\x02\xb32022-02-06 02:22:08\x01\0\0\0\x9d\xcf\x03\x0eSy?\xd2\x135\tc\0\x07\x95\xb2210611092701986372\xa3tms\xb176561198223056552\xaf11000010fa9dea8\t\x95\xb2210611184101935607\xb0Shaco Arrombardo\xb176561198019472843\xaf110000103876dcb\t\x02\xb32022-02-06 02:19:53\x01\0\0\0\x9d\xcf\x03\x0eS}\xca\xaeev\tc\0\x0e\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x95\xb2210612045332227791\xa8R34 I-NO\xb176561198046971684\xaf1100001052b0724\t\x02\xb32022-02-06 02:19:26\x01\0\0\0\x9d\xcf\x03\x0eSy0\x12\xfd\x84\tc\0\x07\x95\xb2210611092701986372\xa3tms\xb176561198223056552\xaf11000010fa9dea8\t\x95\xb2210611184101935607\xb0Shaco Arrombardo\xb176561198019472843\xaf110000103876dcb\t\x01\xb32022-02-06 02:17:29\x01\0\0\0\x9d\xcf\x03\x0eSy$#\xb0\xfc\tc\0\x07\x95\xb2210611092701986372\xa3tms\xb176561198223056552\xaf11000010fa9dea8\t\x95\xb2210611184101935607\xb0Shaco Arrombardo\xb176561198019472843\xaf110000103876dcb\t\x01\xb32022-02-06 02:15:28\x01\0\0\0\x9d\xcf\x03\x0eS}\xc5\x15\xcf\xf1\t\x08\x12\x12\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2210611172901281375\xa4g5h3\xb176561198066767737\xaf110000106591779\x07\x02\xb32022-02-06 02:14:49\x01\0\0\0\x9d\xcf\x03\x0eS}\xb9w\xc3_\t\x08\x12\x12\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2210611172901281375\xa4g5h3\xb176561198066767737\xaf110000106591779\x07\x01\xb32022-02-06 02:12:53\x01\0\0\0\x9d\xcf\x03\x0eS}\x95\x1a\x14\xd0\tc\r\0\x95\xb2210611163406897038\xabKidSusSauce\xb176561198796113273\xaf110000131d20579\t\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x01\xb32022-02-06 02:10:27\x01\0\0\0\x9d\xcf\x03\x0eS}\xa7$\x04\x91\t\x08\x12\x12\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2210611172901281375\xa4g5h3\xb176561198066767737\xaf110000106591779\x07\x01\xb32022-02-06 02:09:46\x01\0\0\0\x9d\xcf\x03\x0eS|x.;\xd4\tc\x01\0\x95\xb2210612195532158554\xa7Nowhere\xb176561198108655731\xaf110000108d84073\t\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x02\xb32022-02-06 02:02:47\x01\0\0\0\x9d\xcf\x03\x0eS}re;\xfc\t\x08\x12\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2211222194227494329\xacEpicKittyCat\xb176561198040006360\xaf110000104c0bed8\x07\x01\xb32022-02-06 02:01:01\x01\0\0\0\x9d\xcf\x03\x0eS|d\xdd\x9d\x8c\t\x08\x02\x12\x95\xb2211224234141126253\xa6Fakuto\xb176561198387121965\xaf110000119714f2d\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x02\xb32022-02-06 01:55:39\x01\0\0\0";
         let mut matches = BTreeSet::new();
         let mut errors = Vec::new();
-        parse_messagepack_response(&mut matches, &mut errors, &RESPONSE);
+        parse_response(&mut matches, &mut errors, &RESPONSE);
 
         assert!(errors.is_empty(), "Got errors: {:#?}", errors);
 
@@ -566,7 +356,7 @@ mod tests {
 
         let mut matches = BTreeSet::new();
         let mut errors = Vec::new();
-        parse_messagepack_response(&mut matches, &mut errors, &RESPONSE);
+        parse_response(&mut matches, &mut errors, &RESPONSE);
 
         assert!(errors.is_empty(), "Got errors: {:#?}", errors);
 
