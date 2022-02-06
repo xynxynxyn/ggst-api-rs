@@ -180,6 +180,15 @@ mod messagepack {
     type UnknownInteger = i64;
 
     impl ReplayRequest {
+        #[cfg(test)]
+        pub fn from_hex(hex: &str) -> Result<Self> {
+            let bytes = (0..hex.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+                .collect::<Vec<_>>();
+            Ok(rmp_serde::decode::from_slice(&bytes)?)
+        }
+
         pub fn to_hex(&self) -> String {
             use std::fmt::Write;
 
@@ -191,14 +200,14 @@ mod messagepack {
         }
     }
 
-    #[derive(Debug, Clone, Serialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
     pub struct ReplayRequest {
         pub header: RequestHeader,
         pub body: RequestBody,
     }
 
-    #[derive(Debug, Clone, Serialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
     pub struct RequestHeader {
         pub string1: String,
@@ -208,7 +217,7 @@ mod messagepack {
         pub int2: UnknownInteger,
     }
 
-    #[derive(Debug, Clone, Serialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
     pub struct RequestBody {
         pub int1: UnknownInteger,
@@ -240,7 +249,7 @@ mod messagepack {
         }
     }
 
-    #[derive(Debug, Clone, Serialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
     pub struct RequestQuery {
         pub int1: UnknownInteger,
@@ -400,5 +409,38 @@ mod tests {
         };
 
         expect_test::expect![["9295B2323131303237313133313233303038333834AD3631613565643466343631633202A5302E312E30039401007F9AFF00016390FFFF000001"]].assert_eq(&query.to_hex())
+    }
+
+    #[test]
+    fn decode_request() {
+        let request = messagepack::ReplayRequest::from_hex("9295b2323130363131303733303536313037353337ad3631666639366131653762353902a5302e312e30039401000a9aff01016390ffff000001").unwrap();
+        expect_test::expect![[r#"
+            ReplayRequest {
+                header: RequestHeader {
+                    string1: "210611073056107537",
+                    string2: "61ff96a1e7b59",
+                    int1: 2,
+                    version: "0.1.0",
+                    int2: 3,
+                },
+                body: RequestBody {
+                    int1: 1,
+                    index: 0,
+                    replays_per_page: 10,
+                    query: RequestQuery {
+                        int1: -1,
+                        int2: 1,
+                        min_floor: 1,
+                        max_floor: 99,
+                        seq: [],
+                        char_1: -1,
+                        char_2: -1,
+                        winner: 0,
+                        int8: 0,
+                        int9: 1,
+                    },
+                },
+            }
+        "#]].assert_debug_eq(&request);
     }
 }
