@@ -10,6 +10,7 @@ pub enum Error {
     UnexpectedResponse(&'static str),
     InvalidCharacterCode(&'static str),
     InvalidArgument(String),
+    InvalidMessagePack(rmp_serde::decode::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -25,6 +26,7 @@ impl fmt::Display for Error {
             }
             Error::InvalidCharacterCode(code) => write!(f, "{} is not valid character code", code),
             Error::InvalidArgument(msg) => write!(f, "Invalid argument: {}", msg),
+            Error::InvalidMessagePack(msg) => write!(f, "Invalid messagepack: {}", msg),
         }
     }
 }
@@ -38,6 +40,12 @@ impl From<reqwest::Error> for Error {
 impl From<chrono::ParseError> for Error {
     fn from(e: chrono::ParseError) -> Self {
         Error::ChronoParseError(e)
+    }
+}
+
+impl From<rmp_serde::decode::Error> for Error {
+    fn from(e: rmp_serde::decode::Error) -> Self {
+        Error::InvalidMessagePack(e)
     }
 }
 

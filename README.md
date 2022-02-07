@@ -64,25 +64,9 @@ impl Player {
 ## How does the API work?
 
 To collect replays a POST request has to be made to https://ggst-game.guiltygear.com/api/catalog/get_replay.
-The body should be of the content type `application/x-www-form-urlencoded` and contain a single entry with the key data.
-Refer to https://github.com/optix2000/totsugeki/issues/35#issuecomment-922516535 for more information about the specific encoding used here.
-
-```
-data="9295B2323131303237313133313233303038333834AD3631613565643466343631633202A5302E302E38039401CC{page_index_hex}{replays_per_page_hex}9AFF00{min_floor_hex}{max_floor_hex}90FFFF000001"
-```
-
-The response consists of raw bytes, mainly invalid unicode.
-Every page begins with a header of about ~60 bytes which is not needed.
-
-This is the structure of the response for each replay on a page:
-
-```
-{garbage[..]}{floor[1]}{p1_char[1]}{p2_char[1]}\x95\xb2{p1_id[18]}\xa_{p1_name[..]}\xb1{p1_steam_id?[..]}\xaf{p1_online_id[..]}\x07\x95\xb2{p2_id[18]}\xa_{p2_name[..]}\xb1{p2_steam_id?[..]}\xaf{p2_online_id[..]}\t{winner[1]}\xb3{timestamp[19]}\x01\x00\x00\x00
-```
-
-The brackets indicate the length in bytes of the field.
-Since after every timestamp there is the '\x01\x00\x00\x00' pattern we can split a page on that sequence.
-Then we use the '\x96\xb2' byte sequence to split each match into three sections.
+The body should be of the content type `application/x-www-form-urlencoded` and contain a single entry with the key data which is
+hex encoded [messagepack](https://msgpack.org/). The response is plain messagepack. Rust types are defined for both the request and response
+with all know fields having readable names.
 
 ## Why does it return an error?
 Sometimes the response is malformed and a replay cannot be parsed.
