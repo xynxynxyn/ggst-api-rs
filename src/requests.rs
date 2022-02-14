@@ -85,7 +85,7 @@ pub async fn get_replays<A, B, C, D, E>(
                 string2: "61a5ed4f461c2".into(),
                 int1: 2,
                 version: "0.1.0".into(),
-                int2: 3,
+                platform: messagepack::Platform::PC,
             },
             body: messagepack::RequestBody {
                 int1: 1,
@@ -268,6 +268,25 @@ mod messagepack {
         pub body: T,
     }
 
+    #[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
+    #[serde(crate = "serde_crate")]
+    pub struct Platform(u8);
+
+    impl fmt::Debug for Platform {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match *self {
+                Self::PC => "PC".fmt(f),
+                Self::PLAYSTATION => "Playstation".fmt(f),
+                Self(x) => f.debug_tuple("Platform").field(&x).finish(),
+            }
+        }
+    }
+
+    impl Platform {
+        pub const PC: Platform = Platform(3);
+        pub const PLAYSTATION: Platform = Platform(1);
+    }
+
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
     pub struct RequestHeader {
@@ -276,7 +295,7 @@ mod messagepack {
         pub string2: String,
         pub int1: UnknownInteger,
         pub version: String,
-        pub int2: UnknownInteger, // 3 == PC, 1 == PS ?
+        pub platform: Platform, // 3 == PC, 1 == PS ?
     }
 
     impl ApiRequest for RequestBody {
@@ -650,7 +669,7 @@ mod tests {
                 string2: "61a5ed4f461c2".into(),
                 int1: 2,
                 version: "0.1.0".into(),
-                int2: 3,
+                platform: messagepack::Platform::PC,
             },
             body: RequestBody {
                 int1: 1,
