@@ -80,7 +80,7 @@ pub async fn get_replays<A, B, C, D, E>(
     let mut errors = vec![];
     for i in 0..pages {
         // Construct the query string
-        let query_string = messagepack::ReplayRequest {
+        let request = messagepack::ReplayRequest {
             header: messagepack::RequestHeader {
                 player_id: "211027113123008384".into(),
                 string2: "61a5ed4f461c2".into(),
@@ -94,50 +94,57 @@ pub async fn get_replays<A, B, C, D, E>(
                 replays_per_page,
                 query: messagepack::RequestQuery::from(&request_parameters),
             },
-        }
-        .to_hex();
-        let response = client
-            .post(&request_url)
-            .header(header::USER_AGENT, "Steam")
-            .header(header::CACHE_CONTROL, "no-cache")
-            .form(&[("data", query_string)])
-            .send()
-            .await?;
-
-        // Convert the response to raw bytes
-        let bytes = response.bytes().await?;
-
-        if !parse_response(&mut matches, &mut errors, &bytes) {
-            return Ok((matches.into_iter(), errors.into_iter()));
+        };
+        match api_request(&client, &request_url, request).await? {
+            Ok(response) => {
+                parse_response(&mut matches, &mut errors, response);
+            }
+            Err(err) => {
+                errors.push(err);
+            }
         }
     }
     Ok((matches.into_iter(), errors.into_iter()))
 }
 
+async fn api_request<T, U>(
+    client: &reqwest::Client,
+    request_url: &str,
+    request: messagepack::Request<T>,
+) -> Result<std::result::Result<messagepack::Response<U>, ParseError>>
+where
+    T: Serialize,
+    for<'de> U: Deserialize<'de>,
+{
+    let response = client
+        .post(request_url)
+        .header(header::USER_AGENT, "Steam")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .form(&[("data", request.to_hex())])
+        .send()
+        .await?;
+
+    // Convert the response to raw bytes
+    let bytes = response.bytes().await?;
+    Ok(rmp_serde::decode::from_slice(&bytes)
+        .map_err(|e| ParseError::new(show_buf(&bytes), e.into())))
+}
+
 fn parse_response(
     matches: &mut BTreeSet<Match>,
     errors: &mut Vec<ParseError>,
-    bytes: &[u8],
-) -> bool {
-    match rmp_serde::decode::from_slice::<messagepack::ReplayResponse>(bytes) {
-        Ok(response) => {
-            for replay in response.body.replays {
-                match match_from_replay(replay.clone()) {
-                    Ok(m) => {
-                        matches.insert(m);
-                    }
-                    Err(e) => {
-                        errors.push(ParseError::new(show_buf(bytes), e));
-                    }
-                }
+    response: messagepack::ReplayResponse,
+) {
+    for replay in response.body.replays {
+        match match_from_replay(replay.clone()) {
+            Ok(m) => {
+                matches.insert(m);
+            }
+            Err(e) => {
+                errors.push(ParseError::new(format!("{:#?}", replay), e));
             }
         }
-        Err(e) => {
-            errors.push(ParseError::new(show_buf(bytes), e.into()));
-        }
     }
-
-    true
 }
 
 fn match_from_replay(replay: messagepack::Replay) -> Result<Match> {
@@ -223,6 +230,13 @@ mod messagepack {
         pub body: T,
     }
 
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(crate = "serde_crate")]
+    pub struct Response<T> {
+        pub header: ResponseHeader,
+        pub body: T,
+    }
+
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
     pub struct RequestHeader {
@@ -301,12 +315,8 @@ mod messagepack {
         pub prioritize_best_bout: u8,
         pub int9: UnknownInteger,
     }
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(crate = "serde_crate")]
-    pub struct ReplayResponse {
-        pub header: ResponseHeader,
-        pub body: ResponseBody,
-    }
+
+    pub type ReplayResponse = Response<ResponseBody>;
 
     #[derive(Debug, Clone, Deserialize)]
     #[serde(crate = "serde_crate")]
@@ -421,12 +431,38 @@ fn show_buf<B: AsRef<[u8]>>(buf: B) -> String {
 mod tests {
     use super::*;
 
+    fn parse_response_from_bytes(
+        matches: &mut BTreeSet<Match>,
+        errors: &mut Vec<ParseError>,
+        bytes: &[u8],
+    ) -> bool {
+        match rmp_serde::decode::from_slice::<messagepack::ReplayResponse>(bytes) {
+            Ok(response) => {
+                for replay in response.body.replays {
+                    match match_from_replay(replay.clone()) {
+                        Ok(m) => {
+                            matches.insert(m);
+                        }
+                        Err(e) => {
+                            errors.push(ParseError::new(show_buf(bytes), e));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                errors.push(ParseError::new(show_buf(bytes), e.into()));
+            }
+        }
+
+        true
+    }
+
     #[test]
     fn test_parse_response() {
         const RESPONSE: &[u8] = b"\x92\x98\xad61ff0796545a9\0\xb32022/02/05 23:26:14\xa50.1.0\xa50.0.2\xa50.0.2\xa0\xa0\x94\0\0\x1e\xdc\0\x1e\x9d\xcf\x03\x0eS}\x9f\x8ds\xbf\t\x08\x0c\x0b\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210818223745601103\xafSamuraiPizzaCat\xb176561199149925226\xaf110000146e8c36a\x07\x02\xb32022-02-06 04:07:59\x01\0\0\0\x9d\xcf\x03\x0eS|v\xbc6N\t\x08\x11\x0c\x95\xb2210905181006143473\xa8Haratura\xb176561198148293594\xaf11000010b3513da\x07\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:58:19\x01\0\0\0\x9d\xcf\x03\x0eS|lr}\xc1\t\x08\x11\x0c\x95\xb2210905181006143473\xa8Haratura\xb176561198148293594\xaf11000010b3513da\x07\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:56:46\x01\0\0\0\x9d\xcf\x03\x0eS|du\xac>\t\x08\x11\x0c\x95\xb2210905181006143473\xa8Haratura\xb176561198148293594\xaf11000010b3513da\x07\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:55:12\x01\0\0\0\x9d\xcf\x03\x0eSy?\x93\x83\x86\t\x06\x04\0\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2211128031436376804\xa9BundleBox\xb176561198103224698\xaf11000010885617a\x05\x01\xb32022-02-06 03:29:31\x01\0\0\0\x9d\xcf\x03\x0eSy/\xfbL\xaa\t\x06\x04\0\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2211128031436376804\xa9BundleBox\xb176561198103224698\xaf11000010885617a\x05\x01\xb32022-02-06 03:27:10\x01\0\0\0\x9d\xcf\x03\x0eSy\"\xfc\x1d\x85\t\x06\x04\0\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2211128031436376804\xa9BundleBox\xb176561198103224698\xaf11000010885617a\x05\x02\xb32022-02-06 03:24:52\x01\0\0\0\x9d\xcf\x03\x0eSx\xf9\x8c\xd2\r\t\x06\x04\x12\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2210719021019879063\xa9Sebastard\xb176561198354593280\xaf11000011780f600\x05\x01\xb32022-02-06 03:17:56\x01\0\0\0\x9d\xcf\x03\x0eSx\xedf\x1f\xf4\t\x06\x04\x12\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2210719021019879063\xa9Sebastard\xb176561198354593280\xaf11000011780f600\x05\x01\xb32022-02-06 03:15:53\x01\0\0\0\x9d\xcf\x03\x0eS{q&\x8d\x92\t\x07\x05\x0c\x95\xb2220117205818084945\xa8Bugabalu\xb176561198136737187\xaf11000010a84bda3\x05\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x02\xb32022-02-06 03:14:30\x01\0\0\0\x9d\xcf\x03\x0eSx\xe0+\xf8\xf7\t\x06\x04\x12\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2210719021019879063\xa9Sebastard\xb176561198354593280\xaf11000011780f600\x05\x02\xb32022-02-06 03:13:31\x01\0\0\0\x9d\xcf\x03\x0eS{c\xba\xc9z\t\x07\x05\x0c\x95\xb2220117205818084945\xa8Bugabalu\xb176561198136737187\xaf11000010a84bda3\x05\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:12:05\x01\0\0\0\x9d\xcf\x03\x0eS{T\xd4\\\x90\t\x07\x05\x0c\x95\xb2220117205818084945\xa8Bugabalu\xb176561198136737187\xaf11000010a84bda3\x05\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x02\xb32022-02-06 03:09:55\x01\0\0\0\x9d\xcf\x03\x0eS{Ab\xacm\t\x07\x0c\t\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210811193631829778\xaeF4ulty_R4ilgun\xb176561198351152593\xaf1100001174c75d1\x06\x02\xb32022-02-06 03:06:29\x01\0\0\0\x9d\xcf\x03\x0eS{3\xde\xb6\xa2\t\x07\x0c\t\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210811193631829778\xaeF4ulty_R4ilgun\xb176561198351152593\xaf1100001174c75d1\x06\x01\xb32022-02-06 03:04:02\x01\0\0\0\x9d\xcf\x03\x0eS{)\x03G\xe2\t\x07\x0c\t\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210811193631829778\xaeF4ulty_R4ilgun\xb176561198351152593\xaf1100001174c75d1\x06\x02\xb32022-02-06 03:02:20\x01\0\0\0\x9d\xcf\x03\x0eS}\xfct\x97\x16\t\x08\0\x12\x95\xb2210615035914519825\xa5BL4DE\xb176561199083465035\xaf110000142f2a94b\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x01\xb32022-02-06 02:24:18\x01\0\0\0\x9d\xcf\x03\x0eS}\xf3\xeb\x0c\x8a\t\x08\0\x12\x95\xb2210615035914519825\xa5BL4DE\xb176561199083465035\xaf110000142f2a94b\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x02\xb32022-02-06 02:22:34\x01\0\0\0\x9d\xcf\x03\x0eS}\xdb{XM\tc\0\x0e\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x95\xb2210612045332227791\xa8R34 I-NO\xb176561198046971684\xaf1100001052b0724\t\x02\xb32022-02-06 02:22:08\x01\0\0\0\x9d\xcf\x03\x0eSy?\xd2\x135\tc\0\x07\x95\xb2210611092701986372\xa3tms\xb176561198223056552\xaf11000010fa9dea8\t\x95\xb2210611184101935607\xb0Shaco Arrombardo\xb176561198019472843\xaf110000103876dcb\t\x02\xb32022-02-06 02:19:53\x01\0\0\0\x9d\xcf\x03\x0eS}\xca\xaeev\tc\0\x0e\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x95\xb2210612045332227791\xa8R34 I-NO\xb176561198046971684\xaf1100001052b0724\t\x02\xb32022-02-06 02:19:26\x01\0\0\0\x9d\xcf\x03\x0eSy0\x12\xfd\x84\tc\0\x07\x95\xb2210611092701986372\xa3tms\xb176561198223056552\xaf11000010fa9dea8\t\x95\xb2210611184101935607\xb0Shaco Arrombardo\xb176561198019472843\xaf110000103876dcb\t\x01\xb32022-02-06 02:17:29\x01\0\0\0\x9d\xcf\x03\x0eSy$#\xb0\xfc\tc\0\x07\x95\xb2210611092701986372\xa3tms\xb176561198223056552\xaf11000010fa9dea8\t\x95\xb2210611184101935607\xb0Shaco Arrombardo\xb176561198019472843\xaf110000103876dcb\t\x01\xb32022-02-06 02:15:28\x01\0\0\0\x9d\xcf\x03\x0eS}\xc5\x15\xcf\xf1\t\x08\x12\x12\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2210611172901281375\xa4g5h3\xb176561198066767737\xaf110000106591779\x07\x02\xb32022-02-06 02:14:49\x01\0\0\0\x9d\xcf\x03\x0eS}\xb9w\xc3_\t\x08\x12\x12\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2210611172901281375\xa4g5h3\xb176561198066767737\xaf110000106591779\x07\x01\xb32022-02-06 02:12:53\x01\0\0\0\x9d\xcf\x03\x0eS}\x95\x1a\x14\xd0\tc\r\0\x95\xb2210611163406897038\xabKidSusSauce\xb176561198796113273\xaf110000131d20579\t\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x01\xb32022-02-06 02:10:27\x01\0\0\0\x9d\xcf\x03\x0eS}\xa7$\x04\x91\t\x08\x12\x12\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2210611172901281375\xa4g5h3\xb176561198066767737\xaf110000106591779\x07\x01\xb32022-02-06 02:09:46\x01\0\0\0\x9d\xcf\x03\x0eS|x.;\xd4\tc\x01\0\x95\xb2210612195532158554\xa7Nowhere\xb176561198108655731\xaf110000108d84073\t\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x02\xb32022-02-06 02:02:47\x01\0\0\0\x9d\xcf\x03\x0eS}re;\xfc\t\x08\x12\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2211222194227494329\xacEpicKittyCat\xb176561198040006360\xaf110000104c0bed8\x07\x01\xb32022-02-06 02:01:01\x01\0\0\0\x9d\xcf\x03\x0eS|d\xdd\x9d\x8c\t\x08\x02\x12\x95\xb2211224234141126253\xa6Fakuto\xb176561198387121965\xaf110000119714f2d\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x02\xb32022-02-06 01:55:39\x01\0\0\0";
         let mut matches = BTreeSet::new();
         let mut errors = Vec::new();
-        parse_response(&mut matches, &mut errors, &RESPONSE);
+        parse_response_from_bytes(&mut matches, &mut errors, &RESPONSE);
 
         assert!(errors.is_empty(), "Got errors: {:#?}", errors);
 
@@ -440,7 +476,7 @@ mod tests {
 
         let mut matches = BTreeSet::new();
         let mut errors = Vec::new();
-        parse_response(&mut matches, &mut errors, &RESPONSE);
+        parse_response_from_bytes(&mut matches, &mut errors, &RESPONSE);
 
         assert!(errors.is_empty(), "Got errors: {:#?}", errors);
 
