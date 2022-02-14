@@ -188,13 +188,23 @@ mod messagepack {
     // An integer that we don't know the purpose of in the format. Signed and large to prevent unexpectedly large values from causing errors
     type UnknownInteger = i64;
 
-    impl ReplayRequest {
+    pub type ReplayRequest = Request<RequestBody>;
+
+    impl<T> Request<T>
+    where
+        for<'de> T: Deserialize<'de>,
+    {
         #[cfg(test)]
         pub fn from_hex(hex: &str) -> Result<Self> {
             let bytes = from_hex(hex);
             Ok(rmp_serde::decode::from_slice(&bytes)?)
         }
+    }
 
+    impl<T> Request<T>
+    where
+        T: Serialize,
+    {
         pub fn to_hex(&self) -> String {
             use std::fmt::Write;
 
@@ -208,9 +218,9 @@ mod messagepack {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
-    pub struct ReplayRequest {
+    pub struct Request<T> {
         pub header: RequestHeader,
-        pub body: RequestBody,
+        pub body: T,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -349,6 +359,15 @@ mod messagepack {
         pub string1: String,
         pub string2: String,
         pub int1: UnknownInteger,
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    #[serde(crate = "serde_crate")]
+    pub struct VipRequest {
+        pub int1: UnknownInteger,
+        pub int2: UnknownInteger,
+        pub int3: UnknownInteger,
+        pub int4: UnknownInteger,
     }
 
     fn deserialize_date_time<'de, D>(
@@ -512,6 +531,30 @@ mod tests {
                         prioritize_best_bout: 1,
                         int9: 1,
                     },
+                },
+            }
+        "#]]
+        .assert_debug_eq(&request);
+    }
+
+    #[test]
+    fn decode_vip_ranking_request() {
+        let request = messagepack::Request::<messagepack::VipRequest>::from_hex("9295b2323130363131303733303536313037353337ad3632306132363930623165653102a5302e312e3003940000ff00").unwrap();
+
+        expect_test::expect![[r#"
+            Request {
+                header: RequestHeader {
+                    player_id: "210611073056107537",
+                    string2: "620a2690b1ee1",
+                    int1: 2,
+                    version: "0.1.0",
+                    int2: 3,
+                },
+                body: VipRequest {
+                    int1: 0,
+                    int2: 0,
+                    int3: -1,
+                    int4: 0,
                 },
             }
         "#]]
