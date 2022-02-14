@@ -1,5 +1,5 @@
 Ok(
-    ReplayResponse {
+    Response {
         header: ResponseHeader {
             id: "61ffa1560e387",
             int1: 0,
