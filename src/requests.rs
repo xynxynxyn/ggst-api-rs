@@ -319,8 +319,8 @@ mod messagepack {
                 min_floor: query.min_floor,
                 max_floor: query.max_floor,
                 seq: vec![],
-                char_1: query.char_1.map_or_else(|| -1, |c| c.to_u8() as i8),
-                char_2: query.char_2.map_or_else(|| -1, |c| c.to_u8() as i8),
+                char_1: query.char_1,
+                char_2: query.char_2,
                 winner: query.winner.map_or_else(
                     || 0x00,
                     |w| match w {
@@ -361,8 +361,10 @@ mod messagepack {
         #[serde(with = "floor")]
         pub max_floor: Floor,
         pub seq: Vec<()>,
-        pub char_1: i8,
-        pub char_2: i8,
+        #[serde(with = "character")]
+        pub char_1: Option<Character>,
+        #[serde(with = "character")]
+        pub char_2: Option<Character>,
         // 0 for undesignated, 1 for player 1
         pub winner: u8,
         // 0/1 for false/true
@@ -567,6 +569,36 @@ mod messagepack {
             value.to_u8().serialize(serializer)
         }
     }
+
+    mod character {
+        use super::*;
+
+        pub(crate) fn deserialize<'de, D>(
+            deserializer: D,
+        ) -> std::result::Result<Option<Character>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let b = i8::deserialize(deserializer)?;
+            Ok(if b == -1 {
+                None
+            } else {
+                Some(Character::from_u8(b as u8).map_err(D::Error::custom)?)
+            })
+        }
+
+        pub(crate) fn serialize<S>(
+            value: &Option<Character>,
+            serializer: S,
+        ) -> std::result::Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            value
+                .map_or_else(|| -1, |c| c.to_u8() as i8)
+                .serialize(serializer)
+        }
+    }
 }
 
 // Helper function for constructing error messages to avoid issues with the borrow checker
@@ -681,8 +713,8 @@ mod tests {
                     min_floor: Floor::F1,
                     max_floor: Floor::Celestial,
                     seq: vec![],
-                    char_1: -1,
-                    char_2: -1,
+                    char_1: None,
+                    char_2: None,
                     winner: 0,
                     prioritize_best_bout: 0,
                     int9: 1,
@@ -703,7 +735,7 @@ mod tests {
                     string2: "61ff96a1e7b59",
                     int1: 2,
                     version: "0.1.0",
-                    int2: 3,
+                    platform: "PC",
                 },
                 body: RequestBody {
                     int1: 1,
@@ -715,8 +747,8 @@ mod tests {
                         min_floor: F1,
                         max_floor: Celestial,
                         seq: [],
-                        char_1: -1,
-                        char_2: -1,
+                        char_1: None,
+                        char_2: None,
                         winner: 0,
                         prioritize_best_bout: 1,
                         int9: 1,
@@ -738,7 +770,7 @@ mod tests {
                     string2: "620a2690b1ee1",
                     int1: 2,
                     version: "0.1.0",
-                    int2: 3,
+                    platform: "PC",
                 },
                 body: VipRequest {
                     int1: 0,
@@ -767,7 +799,7 @@ mod tests {
                     string2: "620a2690b1ee1",
                     int1: 2,
                     version: "0.1.0",
-                    int2: 3,
+                    platform: "PC",
                 },
                 body: StatisticsRequest {
                     id: "220120010822189979",
