@@ -72,7 +72,6 @@ pub async fn get_replays<A, B, C, D, E>(
         )));
     }
 
-    let request_url = format!("{}/api/catalog/get_replay", context.base_url);
     let client = reqwest::Client::new();
 
     // Assume at most 10 replays per page for pre allocation
@@ -80,13 +79,13 @@ pub async fn get_replays<A, B, C, D, E>(
     let mut errors = vec![];
     for i in 0..pages {
         // Construct the query string
-        let query_string = messagepack::ReplayRequest {
+        let request = messagepack::ReplayRequest {
             header: messagepack::RequestHeader {
                 player_id: "211027113123008384".into(),
                 string2: "61a5ed4f461c2".into(),
                 int1: 2,
                 version: "0.1.0".into(),
-                int2: 3,
+                platform: messagepack::Platform::PC,
             },
             body: messagepack::RequestBody {
                 int1: 1,
@@ -94,50 +93,57 @@ pub async fn get_replays<A, B, C, D, E>(
                 replays_per_page,
                 query: messagepack::RequestQuery::from(&request_parameters),
             },
-        }
-        .to_hex();
-        let response = client
-            .post(&request_url)
-            .header(header::USER_AGENT, "Steam")
-            .header(header::CACHE_CONTROL, "no-cache")
-            .form(&[("data", query_string)])
-            .send()
-            .await?;
-
-        // Convert the response to raw bytes
-        let bytes = response.bytes().await?;
-
-        if !parse_response(&mut matches, &mut errors, &bytes) {
-            return Ok((matches.into_iter(), errors.into_iter()));
+        };
+        match api_request(&client, &context.base_url, request).await? {
+            Ok(response) => {
+                parse_response(&mut matches, &mut errors, response);
+            }
+            Err(err) => {
+                errors.push(err);
+            }
         }
     }
     Ok((matches.into_iter(), errors.into_iter()))
 }
 
+async fn api_request<T, U>(
+    client: &reqwest::Client,
+    base_url: &str,
+    request: messagepack::Request<T>,
+) -> Result<std::result::Result<messagepack::Response<U>, ParseError>>
+where
+    T: messagepack::ApiRequest,
+    for<'de> U: Deserialize<'de>,
+{
+    let response = client
+        .post(String::from(base_url) + T::PATH)
+        .header(header::USER_AGENT, "Steam")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .form(&[("data", request.to_hex())])
+        .send()
+        .await?;
+
+    // Convert the response to raw bytes
+    let bytes = response.bytes().await?;
+    Ok(rmp_serde::decode::from_slice(&bytes)
+        .map_err(|e| ParseError::new(show_buf(&bytes), e.into())))
+}
+
 fn parse_response(
     matches: &mut BTreeSet<Match>,
     errors: &mut Vec<ParseError>,
-    bytes: &[u8],
-) -> bool {
-    match rmp_serde::decode::from_slice::<messagepack::ReplayResponse>(bytes) {
-        Ok(response) => {
-            for replay in response.body.replays {
-                match match_from_replay(replay.clone()) {
-                    Ok(m) => {
-                        matches.insert(m);
-                    }
-                    Err(e) => {
-                        errors.push(ParseError::new(show_buf(bytes), e));
-                    }
-                }
+    response: messagepack::ReplayResponse,
+) {
+    for replay in response.body.replays {
+        match match_from_replay(replay.clone()) {
+            Ok(m) => {
+                matches.insert(m);
+            }
+            Err(e) => {
+                errors.push(ParseError::new(format!("{:#?}", replay), e));
             }
         }
-        Err(e) => {
-            errors.push(ParseError::new(show_buf(bytes), e.into()));
-        }
     }
-
-    true
 }
 
 fn match_from_replay(replay: messagepack::Replay) -> Result<Match> {
@@ -186,15 +192,29 @@ mod messagepack {
     use crate::Character;
 
     // An integer that we don't know the purpose of in the format. Signed and large to prevent unexpectedly large values from causing errors
-    type UnknownInteger = i64;
+    pub type UnknownInteger = i64;
 
-    impl ReplayRequest {
+    pub type ReplayRequest = Request<RequestBody>;
+
+    pub trait ApiRequest: Serialize {
+        const PATH: &'static str;
+    }
+
+    impl<T> Request<T>
+    where
+        for<'de> T: Deserialize<'de>,
+    {
         #[cfg(test)]
         pub fn from_hex(hex: &str) -> Result<Self> {
             let bytes = from_hex(hex);
             Ok(rmp_serde::decode::from_slice(&bytes)?)
         }
+    }
 
+    impl<T> Request<T>
+    where
+        T: Serialize,
+    {
         pub fn to_hex(&self) -> String {
             use std::fmt::Write;
 
@@ -208,9 +228,63 @@ mod messagepack {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
-    pub struct ReplayRequest {
+    pub struct Request<T> {
         pub header: RequestHeader,
-        pub body: RequestBody,
+        pub body: T,
+    }
+
+    impl<T> Response<T>
+    where
+        for<'de> T: Deserialize<'de>,
+    {
+        #[cfg(test)]
+        pub fn from_hex(hex: &str) -> Result<Self> {
+            let bytes = from_hex(hex);
+            Ok(rmp_serde::decode::from_slice(&bytes)?)
+        }
+    }
+
+    impl<T> Response<T>
+    where
+        T: Serialize,
+    {
+        #[cfg(test)]
+        #[allow(dead_code)]
+        pub fn to_hex(&self) -> String {
+            use std::fmt::Write;
+
+            let mut buf = String::new();
+            for b in rmp_serde::encode::to_vec(self).unwrap() {
+                write!(buf, "{:02X}", b).unwrap();
+            }
+            buf
+        }
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    #[serde(crate = "serde_crate")]
+    pub struct Response<T> {
+        pub header: ResponseHeader,
+        pub body: T,
+    }
+
+    #[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
+    #[serde(crate = "serde_crate")]
+    pub struct Platform(u8);
+
+    impl fmt::Debug for Platform {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match *self {
+                Self::PC => "PC".fmt(f),
+                Self::PLAYSTATION => "Playstation".fmt(f),
+                Self(x) => f.debug_tuple("Platform").field(&x).finish(),
+            }
+        }
+    }
+
+    impl Platform {
+        pub const PC: Platform = Platform(3);
+        pub const PLAYSTATION: Platform = Platform(1);
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -221,7 +295,11 @@ mod messagepack {
         pub string2: String,
         pub int1: UnknownInteger,
         pub version: String,
-        pub int2: UnknownInteger,
+        pub platform: Platform, // 3 == PC, 1 == PS ?
+    }
+
+    impl ApiRequest for RequestBody {
+        const PATH: &'static str = "/api/catalog/get_replay";
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -241,8 +319,8 @@ mod messagepack {
                 min_floor: query.min_floor,
                 max_floor: query.max_floor,
                 seq: vec![],
-                char_1: query.char_1.map_or_else(|| -1, |c| c.to_u8() as i8),
-                char_2: query.char_2.map_or_else(|| -1, |c| c.to_u8() as i8),
+                char_1: query.char_1,
+                char_2: query.char_2,
                 winner: query.winner.map_or_else(
                     || 0x00,
                     |w| match w {
@@ -283,22 +361,20 @@ mod messagepack {
         #[serde(with = "floor")]
         pub max_floor: Floor,
         pub seq: Vec<()>,
-        pub char_1: i8,
-        pub char_2: i8,
+        #[serde(with = "character")]
+        pub char_1: Option<Character>,
+        #[serde(with = "character")]
+        pub char_2: Option<Character>,
         // 0 for undesignated, 1 for player 1
         pub winner: u8,
         // 0/1 for false/true
         pub prioritize_best_bout: u8,
         pub int9: UnknownInteger,
     }
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(crate = "serde_crate")]
-    pub struct ReplayResponse {
-        pub header: ResponseHeader,
-        pub body: ResponseBody,
-    }
 
-    #[derive(Debug, Clone, Deserialize)]
+    pub type ReplayResponse = Response<ResponseBody>;
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
     #[serde(crate = "serde_crate")]
     pub struct ResponseHeader {
         pub id: String,
@@ -351,6 +427,114 @@ mod messagepack {
         pub int1: UnknownInteger,
     }
 
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    #[serde(crate = "serde_crate")]
+    pub struct VipRequest {
+        pub int1: UnknownInteger,
+        pub int2: UnknownInteger,
+        pub int3: UnknownInteger,
+        pub int4: UnknownInteger,
+    }
+
+    impl ApiRequest for VipRequest {
+        const PATH: &'static str = "/api/ranking/vip";
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(crate = "serde_crate")]
+    pub struct VipResponse {
+        pub int1: UnknownInteger,
+        pub int2: UnknownInteger,
+        pub int3: UnknownInteger,
+        pub int4: UnknownInteger,
+        pub ranking: Vec<VipPlayer>,
+        pub struct1: VipStruct1,
+        pub int5: UnknownInteger,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(crate = "serde_crate")]
+    pub struct VipPlayer {
+        pub int1: UnknownInteger,
+        pub int2: UnknownInteger,
+        pub int3: UnknownInteger,
+        pub id: String,
+        pub name: String,
+        pub string1: String,
+        pub string2: String,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(crate = "serde_crate")]
+    pub struct VipStruct1 {
+        pub int1: UnknownInteger,
+        pub int2: UnknownInteger,
+        pub int3: UnknownInteger,
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    #[serde(crate = "serde_crate")]
+    pub struct StatisticsRequest {
+        pub id: String,
+        // 1: Match stats (RC usage, FD usage, perfects, etc)
+        // 2: Post match diagram
+        // 3, 4: Attack stats
+        // 5: Match stats
+        // 6: Challenge progress
+        // 7: Character badge, XP statistics
+        // 8: Some numbers
+        // 9: News
+        pub statistics_type: UnknownInteger,
+        pub int2: UnknownInteger,
+        pub int3: UnknownInteger,
+        pub int4: UnknownInteger,
+        pub int5: UnknownInteger,
+    }
+
+    impl ApiRequest for StatisticsRequest {
+        const PATH: &'static str = "/api/statistics/get";
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    #[serde(crate = "serde_crate")]
+    pub struct StatisticsResponse {
+        pub int1: UnknownInteger,
+        #[serde(with = "json")]
+        pub json: serde_json::Value,
+    }
+
+    // Returned when the api is misused
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    #[serde(crate = "serde_crate")]
+    pub struct ApiError {
+        pub int1: UnknownInteger,
+        pub string1: String,
+    }
+
+    mod json {
+        use super::*;
+
+        use serde_json::Value;
+
+        pub(crate) fn deserialize<'de, D>(deserializer: D) -> std::result::Result<Value, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let b = String::deserialize(deserializer)?;
+            Ok(serde_json::from_str(&b).map_err(D::Error::custom)?)
+        }
+
+        pub(crate) fn serialize<S>(
+            value: &Value,
+            serializer: S,
+        ) -> std::result::Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            value.to_string().serialize(serializer)
+        }
+    }
+
     fn deserialize_date_time<'de, D>(
         deserializer: D,
     ) -> std::result::Result<chrono::DateTime<chrono::Utc>, D::Error>
@@ -385,6 +569,36 @@ mod messagepack {
             value.to_u8().serialize(serializer)
         }
     }
+
+    mod character {
+        use super::*;
+
+        pub(crate) fn deserialize<'de, D>(
+            deserializer: D,
+        ) -> std::result::Result<Option<Character>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let b = i8::deserialize(deserializer)?;
+            Ok(if b == -1 {
+                None
+            } else {
+                Some(Character::from_u8(b as u8).map_err(D::Error::custom)?)
+            })
+        }
+
+        pub(crate) fn serialize<S>(
+            value: &Option<Character>,
+            serializer: S,
+        ) -> std::result::Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            value
+                .map_or_else(|| -1, |c| c.to_u8() as i8)
+                .serialize(serializer)
+        }
+    }
 }
 
 // Helper function for constructing error messages to avoid issues with the borrow checker
@@ -400,14 +614,41 @@ fn show_buf<B: AsRef<[u8]>>(buf: B) -> String {
 }
 #[cfg(test)]
 mod tests {
+    use super::messagepack::*;
     use super::*;
+
+    fn parse_response_from_bytes(
+        matches: &mut BTreeSet<Match>,
+        errors: &mut Vec<ParseError>,
+        bytes: &[u8],
+    ) -> bool {
+        match rmp_serde::decode::from_slice::<messagepack::ReplayResponse>(bytes) {
+            Ok(response) => {
+                for replay in response.body.replays {
+                    match match_from_replay(replay.clone()) {
+                        Ok(m) => {
+                            matches.insert(m);
+                        }
+                        Err(e) => {
+                            errors.push(ParseError::new(show_buf(bytes), e));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                errors.push(ParseError::new(show_buf(bytes), e.into()));
+            }
+        }
+
+        true
+    }
 
     #[test]
     fn test_parse_response() {
         const RESPONSE: &[u8] = b"\x92\x98\xad61ff0796545a9\0\xb32022/02/05 23:26:14\xa50.1.0\xa50.0.2\xa50.0.2\xa0\xa0\x94\0\0\x1e\xdc\0\x1e\x9d\xcf\x03\x0eS}\x9f\x8ds\xbf\t\x08\x0c\x0b\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210818223745601103\xafSamuraiPizzaCat\xb176561199149925226\xaf110000146e8c36a\x07\x02\xb32022-02-06 04:07:59\x01\0\0\0\x9d\xcf\x03\x0eS|v\xbc6N\t\x08\x11\x0c\x95\xb2210905181006143473\xa8Haratura\xb176561198148293594\xaf11000010b3513da\x07\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:58:19\x01\0\0\0\x9d\xcf\x03\x0eS|lr}\xc1\t\x08\x11\x0c\x95\xb2210905181006143473\xa8Haratura\xb176561198148293594\xaf11000010b3513da\x07\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:56:46\x01\0\0\0\x9d\xcf\x03\x0eS|du\xac>\t\x08\x11\x0c\x95\xb2210905181006143473\xa8Haratura\xb176561198148293594\xaf11000010b3513da\x07\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:55:12\x01\0\0\0\x9d\xcf\x03\x0eSy?\x93\x83\x86\t\x06\x04\0\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2211128031436376804\xa9BundleBox\xb176561198103224698\xaf11000010885617a\x05\x01\xb32022-02-06 03:29:31\x01\0\0\0\x9d\xcf\x03\x0eSy/\xfbL\xaa\t\x06\x04\0\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2211128031436376804\xa9BundleBox\xb176561198103224698\xaf11000010885617a\x05\x01\xb32022-02-06 03:27:10\x01\0\0\0\x9d\xcf\x03\x0eSy\"\xfc\x1d\x85\t\x06\x04\0\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2211128031436376804\xa9BundleBox\xb176561198103224698\xaf11000010885617a\x05\x02\xb32022-02-06 03:24:52\x01\0\0\0\x9d\xcf\x03\x0eSx\xf9\x8c\xd2\r\t\x06\x04\x12\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2210719021019879063\xa9Sebastard\xb176561198354593280\xaf11000011780f600\x05\x01\xb32022-02-06 03:17:56\x01\0\0\0\x9d\xcf\x03\x0eSx\xedf\x1f\xf4\t\x06\x04\x12\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2210719021019879063\xa9Sebastard\xb176561198354593280\xaf11000011780f600\x05\x01\xb32022-02-06 03:15:53\x01\0\0\0\x9d\xcf\x03\x0eS{q&\x8d\x92\t\x07\x05\x0c\x95\xb2220117205818084945\xa8Bugabalu\xb176561198136737187\xaf11000010a84bda3\x05\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x02\xb32022-02-06 03:14:30\x01\0\0\0\x9d\xcf\x03\x0eSx\xe0+\xf8\xf7\t\x06\x04\x12\x95\xb2210825010040078270\xacKenoMcsteamo\xb176561198354688358\xaf110000117826966\x05\x95\xb2210719021019879063\xa9Sebastard\xb176561198354593280\xaf11000011780f600\x05\x02\xb32022-02-06 03:13:31\x01\0\0\0\x9d\xcf\x03\x0eS{c\xba\xc9z\t\x07\x05\x0c\x95\xb2220117205818084945\xa8Bugabalu\xb176561198136737187\xaf11000010a84bda3\x05\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x01\xb32022-02-06 03:12:05\x01\0\0\0\x9d\xcf\x03\x0eS{T\xd4\\\x90\t\x07\x05\x0c\x95\xb2220117205818084945\xa8Bugabalu\xb176561198136737187\xaf11000010a84bda3\x05\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x02\xb32022-02-06 03:09:55\x01\0\0\0\x9d\xcf\x03\x0eS{Ab\xacm\t\x07\x0c\t\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210811193631829778\xaeF4ulty_R4ilgun\xb176561198351152593\xaf1100001174c75d1\x06\x02\xb32022-02-06 03:06:29\x01\0\0\0\x9d\xcf\x03\x0eS{3\xde\xb6\xa2\t\x07\x0c\t\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210811193631829778\xaeF4ulty_R4ilgun\xb176561198351152593\xaf1100001174c75d1\x06\x01\xb32022-02-06 03:04:02\x01\0\0\0\x9d\xcf\x03\x0eS{)\x03G\xe2\t\x07\x0c\t\x95\xb2210611232517053199\xa5limon\xb176561198082398187\xaf1100001074797eb\x06\x95\xb2210811193631829778\xaeF4ulty_R4ilgun\xb176561198351152593\xaf1100001174c75d1\x06\x02\xb32022-02-06 03:02:20\x01\0\0\0\x9d\xcf\x03\x0eS}\xfct\x97\x16\t\x08\0\x12\x95\xb2210615035914519825\xa5BL4DE\xb176561199083465035\xaf110000142f2a94b\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x01\xb32022-02-06 02:24:18\x01\0\0\0\x9d\xcf\x03\x0eS}\xf3\xeb\x0c\x8a\t\x08\0\x12\x95\xb2210615035914519825\xa5BL4DE\xb176561199083465035\xaf110000142f2a94b\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x02\xb32022-02-06 02:22:34\x01\0\0\0\x9d\xcf\x03\x0eS}\xdb{XM\tc\0\x0e\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x95\xb2210612045332227791\xa8R34 I-NO\xb176561198046971684\xaf1100001052b0724\t\x02\xb32022-02-06 02:22:08\x01\0\0\0\x9d\xcf\x03\x0eSy?\xd2\x135\tc\0\x07\x95\xb2210611092701986372\xa3tms\xb176561198223056552\xaf11000010fa9dea8\t\x95\xb2210611184101935607\xb0Shaco Arrombardo\xb176561198019472843\xaf110000103876dcb\t\x02\xb32022-02-06 02:19:53\x01\0\0\0\x9d\xcf\x03\x0eS}\xca\xaeev\tc\0\x0e\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x95\xb2210612045332227791\xa8R34 I-NO\xb176561198046971684\xaf1100001052b0724\t\x02\xb32022-02-06 02:19:26\x01\0\0\0\x9d\xcf\x03\x0eSy0\x12\xfd\x84\tc\0\x07\x95\xb2210611092701986372\xa3tms\xb176561198223056552\xaf11000010fa9dea8\t\x95\xb2210611184101935607\xb0Shaco Arrombardo\xb176561198019472843\xaf110000103876dcb\t\x01\xb32022-02-06 02:17:29\x01\0\0\0\x9d\xcf\x03\x0eSy$#\xb0\xfc\tc\0\x07\x95\xb2210611092701986372\xa3tms\xb176561198223056552\xaf11000010fa9dea8\t\x95\xb2210611184101935607\xb0Shaco Arrombardo\xb176561198019472843\xaf110000103876dcb\t\x01\xb32022-02-06 02:15:28\x01\0\0\0\x9d\xcf\x03\x0eS}\xc5\x15\xcf\xf1\t\x08\x12\x12\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2210611172901281375\xa4g5h3\xb176561198066767737\xaf110000106591779\x07\x02\xb32022-02-06 02:14:49\x01\0\0\0\x9d\xcf\x03\x0eS}\xb9w\xc3_\t\x08\x12\x12\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2210611172901281375\xa4g5h3\xb176561198066767737\xaf110000106591779\x07\x01\xb32022-02-06 02:12:53\x01\0\0\0\x9d\xcf\x03\x0eS}\x95\x1a\x14\xd0\tc\r\0\x95\xb2210611163406897038\xabKidSusSauce\xb176561198796113273\xaf110000131d20579\t\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x01\xb32022-02-06 02:10:27\x01\0\0\0\x9d\xcf\x03\x0eS}\xa7$\x04\x91\t\x08\x12\x12\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2210611172901281375\xa4g5h3\xb176561198066767737\xaf110000106591779\x07\x01\xb32022-02-06 02:09:46\x01\0\0\0\x9d\xcf\x03\x0eS|x.;\xd4\tc\x01\0\x95\xb2210612195532158554\xa7Nowhere\xb176561198108655731\xaf110000108d84073\t\x95\xb2210611113829735658\xa3Eli\xb176561198449379262\xaf11000011d2747be\t\x02\xb32022-02-06 02:02:47\x01\0\0\0\x9d\xcf\x03\x0eS}re;\xfc\t\x08\x12\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x95\xb2211222194227494329\xacEpicKittyCat\xb176561198040006360\xaf110000104c0bed8\x07\x01\xb32022-02-06 02:01:01\x01\0\0\0\x9d\xcf\x03\x0eS|d\xdd\x9d\x8c\t\x08\x02\x12\x95\xb2211224234141126253\xa6Fakuto\xb176561198387121965\xaf110000119714f2d\x07\x95\xb2210612062056984376\xb0TwitchTV/VRDante\xb176561198067414364\xaf11000010662f55c\x07\x02\xb32022-02-06 01:55:39\x01\0\0\0";
         let mut matches = BTreeSet::new();
         let mut errors = Vec::new();
-        parse_response(&mut matches, &mut errors, &RESPONSE);
+        parse_response_from_bytes(&mut matches, &mut errors, &RESPONSE);
 
         assert!(errors.is_empty(), "Got errors: {:#?}", errors);
 
@@ -421,7 +662,7 @@ mod tests {
 
         let mut matches = BTreeSet::new();
         let mut errors = Vec::new();
-        parse_response(&mut matches, &mut errors, &RESPONSE);
+        parse_response_from_bytes(&mut matches, &mut errors, &RESPONSE);
 
         assert!(errors.is_empty(), "Got errors: {:#?}", errors);
 
@@ -460,7 +701,7 @@ mod tests {
                 string2: "61a5ed4f461c2".into(),
                 int1: 2,
                 version: "0.1.0".into(),
-                int2: 3,
+                platform: messagepack::Platform::PC,
             },
             body: RequestBody {
                 int1: 1,
@@ -472,8 +713,8 @@ mod tests {
                     min_floor: Floor::F1,
                     max_floor: Floor::Celestial,
                     seq: vec![],
-                    char_1: -1,
-                    char_2: -1,
+                    char_1: None,
+                    char_2: None,
                     winner: 0,
                     prioritize_best_bout: 0,
                     int9: 1,
@@ -488,13 +729,13 @@ mod tests {
     fn decode_request() {
         let request = messagepack::ReplayRequest::from_hex("9295b2323130363131303733303536313037353337ad3631666639366131653762353902a5302e312e30039401000a9aff02016390ffff000101").unwrap();
         expect_test::expect![[r#"
-            ReplayRequest {
+            Request {
                 header: RequestHeader {
                     player_id: "210611073056107537",
                     string2: "61ff96a1e7b59",
                     int1: 2,
                     version: "0.1.0",
-                    int2: 3,
+                    platform: "PC",
                 },
                 body: RequestBody {
                     int1: 1,
@@ -506,8 +747,8 @@ mod tests {
                         min_floor: F1,
                         max_floor: Celestial,
                         seq: [],
-                        char_1: -1,
-                        char_2: -1,
+                        char_1: None,
+                        char_2: None,
                         winner: 0,
                         prioritize_best_bout: 1,
                         int9: 1,
@@ -516,5 +757,66 @@ mod tests {
             }
         "#]]
         .assert_debug_eq(&request);
+    }
+
+    #[test]
+    fn decode_vip_ranking_request() {
+        let request = messagepack::Request::<messagepack::VipRequest>::from_hex("9295b2323130363131303733303536313037353337ad3632306132363930623165653102a5302e312e3003940000ff00").unwrap();
+
+        expect_test::expect![[r#"
+            Request {
+                header: RequestHeader {
+                    player_id: "210611073056107537",
+                    string2: "620a2690b1ee1",
+                    int1: 2,
+                    version: "0.1.0",
+                    platform: "PC",
+                },
+                body: VipRequest {
+                    int1: 0,
+                    int2: 0,
+                    int3: -1,
+                    int4: 0,
+                },
+            }
+        "#]]
+        .assert_debug_eq(&request);
+    }
+
+    #[test]
+    fn test_vip_response() {
+        let response = messagepack::Response::<messagepack::VipResponse>::from_hex("9298AD3632306132646263356236373400B3323032322F30322F31342031303A32333A3536A5302E312E30A5302E302E32A5302E302E32A0A09700CCD1CD180514DC0014970100CD05F3B2323130363131303731333036393337363036A7456D6572616C64B13736353631313939313535343434313331AF313130303030313437336366396133970211CD04D5B2323230313230303130383232313839393739A9474720506C61796572B13736353631313937393630343536353432AF313130303030313030303265393565970301CD04BDB2323130373231303131353237323231383439AE44616879756E2047616D696E6720B13736353631313938323536393130333836AF313130303030313131616537303332970409CD0485B2323130363131303730373338333431373538A84D656D6F6B617270B13736353631313938343236383533343931AF313130303030313162636639303733970507CD041CB2323130363132313334313130363738333537AC416F6D696E65204461696B69B13736353631313939303132333236393238AF313130303030313365623532653130970610CD0419B2323130363131323035363131323636313330AE43726F776E5468756E6465725350B13736353631313938323433343835383138AF31313030303031313065313938376197070FCD03C3B2323130363131303733303237323433343234A9536D6F696240747476B13736353631313938303435373832383935AF313130303030313035313865333666970808CD03BEB2323130393237313535373138303334343532AC4E415352207C204C61746966B13736353631313939323130363430323730AF31313030303031346138373333386597090ECD0382B2323130393235313133363139323030303530B2E38194E383BCE38284E383BCE381BEE38293B13736353631313938323830313734383433AF313130303030313133313136636662970A0FCD0371B2323130363131303730383133383339383536A3727569B13736353631313938303036393131323339AF313130303030313032633763313037970B01CD036EB2323130363131313132343131343331303039AA536E61696C7469676572B13736353631313938313432323032343538AF313130303030313061643832323561970C0CCD035FB2323130363131313834333132333731323339AB4261726679437261796F6EB13736353631313938303835363831383135AF313130303030313037373962323937970D10CD035CB2323130363131313332383439383634363337AE436172726F744F66576973646F6DB13736353631313938323033333034323738AF313130303030313065376337393536970E0FCD0358B2323130363135323031383438343333393237A74461726B726169B13736353631313938383034353533303831AF313130303030313332353263643739970F09CD034CB2323130363131313135353030343937373237AC565458207C20416E65656D61B13736353631313938323834363730333933AF31313030303031313335363035623997100BCD0345B2323130363133303031303439383432343830AB436F66666565706F776572B13736353631313937393939333739323236AF313130303030313032353464333161971102CD033CB2323130363139303733333531303334313133A86B75726F73617761B13736353631313938373936363037333739AF31313030303031333164393866393397120ECD0334B2323130363131313534323237363338363639A654656E736869B13736353631313938313036353936313135AF31313030303031303862386433313397130BCD032FB2323130363137303934353034333731383436B3ED9D91EC9DB820EC82ACEBACB4EB9DBCEC9DB4B13736353631313938303133303631363035AF313130303030313033323539396535971402CD0328B2323130363131303731323333333233313635A343424BB13736353631313938383336313031343739AF31313030303031333433343331363793CD0238CD058DCD0B1A00").unwrap();
+        expect_test::expect_file!["../test_data/vip_response.txt"].assert_debug_eq(&response);
+    }
+
+    #[test]
+    fn statistics_request() {
+        let response = messagepack::Request::<messagepack::StatisticsRequest>::from_hex("9295b2323130363131303733303536313037353337ad3632306132363930623165653102a5302e312e300396b232323031323030313038323231383939373907ffffffff").unwrap();
+        expect_test::expect![[r#"
+            Request {
+                header: RequestHeader {
+                    player_id: "210611073056107537",
+                    string2: "620a2690b1ee1",
+                    int1: 2,
+                    version: "0.1.0",
+                    platform: "PC",
+                },
+                body: StatisticsRequest {
+                    id: "220120010822189979",
+                    statistics_type: 7,
+                    int2: -1,
+                    int3: -1,
+                    int4: -1,
+                    int5: -1,
+                },
+            }
+        "#]]
+        .assert_debug_eq(&response);
+    }
+
+    #[test]
+    fn statistics_response() {
+        let response = Response::<StatisticsResponse>::from_hex("9298AD3632306133393039363765346300B3323032322F30322F31342031313A31323A3039A5302E312E30A5302E302E32A5302E302E32A0A09200DA13BA7B22414E4A5F426164676531223A323130332C22414E4A5F4261646765315F56616C223A392C22414E4A5F426164676532223A3530343030302C22414E4A5F4261646765325F56616C223A302C22414E4A5F426164676533223A3530313030302C22414E4A5F4261646765335F56616C223A312C22414E4A5F457870223A302C22414E4A5F4C76223A312C22414E4A5F4E6578744C76457870223A3130302C22414E4A5F504D5F57696E73223A302C22414E4A5F57696E436861696E4D6178223A302C22414E4A5F57696E436861696E4E6F77223A302C2241584C5F426164676531223A323130332C2241584C5F4261646765315F56616C223A392C2241584C5F426164676532223A3530343030302C2241584C5F4261646765325F56616C223A302C2241584C5F426164676533223A3530313030302C2241584C5F4261646765335F56616C223A312C2241584C5F457870223A302C2241584C5F4C76223A312C2241584C5F4E6578744C76457870223A3130302C2241584C5F504D5F57696E73223A302C2241584C5F57696E436861696E4D6178223A302C2241584C5F57696E436861696E4E6F77223A302C224163636F756E744944223A37363536313139373936303435363534322C2241766174617241757261223A302C22417661746172417572615465726D223A302C22424B4E5F426164676531223A323130332C22424B4E5F4261646765315F56616C223A392C22424B4E5F426164676532223A3530343030302C22424B4E5F4261646765325F56616C223A302C22424B4E5F426164676533223A3530313030302C22424B4E5F4261646765335F56616C223A312C22424B4E5F457870223A302C22424B4E5F4C76223A312C22424B4E5F4E6578744C76457870223A3130302C22424B4E5F504D5F57696E73223A302C22424B4E5F57696E436861696E4D6178223A302C22424B4E5F57696E436861696E4E6F77223A302C224348505F426164676531223A323130332C224348505F4261646765315F56616C223A392C224348505F426164676532223A3530343030302C224348505F4261646765325F56616C223A302C224348505F426164676533223A3530313030302C224348505F4261646765335F56616C223A312C224348505F457870223A302C224348505F4C76223A312C224348505F4E6578744C76457870223A3130302C224348505F504D5F57696E73223A302C224348505F57696E436861696E4D6178223A302C224348505F57696E436861696E4E6F77223A302C22434F535F426164676531223A3530333030392C22434F535F4261646765315F56616C223A313233382C22434F535F426164676532223A3530323138392C22434F535F4261646765325F56616C223A313534362C22434F535F426164676533223A3530313030332C22434F535F4261646765335F56616C223A313534362C22434F535F457870223A37353838373135342C22434F535F4C76223A313534362C22434F535F4E6578744C76457870223A37353932323530302C22434F535F504D5F57696E73223A302C22434F535F57696E436861696E4D6178223A3131382C22434F535F57696E436861696E4E6F77223A31302C22436F6E646974696F6E426974223A2D313032352C224461746148696464656E223A312C2244656D6F7465645F4275727374223A302C2244656D6F7465645F5243223A302C2244656D6F7465645F52434D6F7665223A302C2244656D6F7465645F5243536B696C6C223A302C2244656D6F7465645F556C74696D617465223A302C2244656D6F7465645F575342223A302C224641555F426164676531223A323130332C224641555F4261646765315F56616C223A392C224641555F426164676532223A3530343030302C224641555F4261646765325F56616C223A302C224641555F426164676533223A3530313030302C224641555F4261646765335F56616C223A312C224641555F457870223A302C224641555F4C76223A312C224641555F4E6578744C76457870223A3130302C224641555F504D5F57696E73223A302C224641555F57696E436861696E4D6178223A302C224641555F57696E436861696E4E6F77223A302C2247494F5F426164676531223A3530333030392C2247494F5F4261646765315F56616C223A3333312C2247494F5F426164676532223A3530313030332C2247494F5F4261646765325F56616C223A3839332C2247494F5F426164676533223A3530323133392C2247494F5F4261646765335F56616C223A3839332C2247494F5F457870223A31383031373236302C2247494F5F4C76223A3839332C2247494F5F4E6578744C76457870223A31383034323530302C2247494F5F504D5F57696E73223A302C2247494F5F57696E436861696E4D6178223A35332C2247494F5F57696E436861696E4E6F77223A372C22474C445F426164676531223A323130332C22474C445F4261646765315F56616C223A392C22474C445F426164676532223A3530343030302C22474C445F4261646765325F56616C223A302C22474C445F426164676533223A3530313030302C22474C445F4261646765335F56616C223A312C22474C445F457870223A302C22474C445F4C76223A312C22474C445F4E6578744C76457870223A3130302C22474C445F504D5F57696E73223A302C22474C445F57696E436861696E4D6178223A302C22474C445F57696E436861696E4E6F77223A302C22494E4F5F426164676531223A323130332C22494E4F5F4261646765315F56616C223A392C22494E4F5F426164676532223A3530343030302C22494E4F5F4261646765325F56616C223A302C22494E4F5F426164676533223A3530313030302C22494E4F5F4261646765335F56616C223A312C22494E4F5F457870223A302C22494E4F5F4C76223A312C22494E4F5F4E6578744C76457870223A3130302C22494E4F5F504D5F57696E73223A302C22494E4F5F57696E436861696E4D6178223A302C22494E4F5F57696E436861696E4E6F77223A302C224A4B4F5F426164676531223A323130332C224A4B4F5F4261646765315F56616C223A392C224A4B4F5F426164676532223A3530343030302C224A4B4F5F4261646765325F56616C223A302C224A4B4F5F426164676533223A3530313030302C224A4B4F5F4261646765335F56616C223A312C224A4B4F5F457870223A302C224A4B4F5F4C76223A312C224A4B4F5F4E6578744C76457870223A3130302C224A4B4F5F504D5F57696E73223A302C224A4B4F5F57696E436861696E4D6178223A302C224A4B4F5F57696E436861696E4E6F77223A302C224B594B5F426164676531223A323130332C224B594B5F4261646765315F56616C223A392C224B594B5F426164676532223A3530343030302C224B594B5F4261646765325F56616C223A302C224B594B5F426164676533223A3530313030302C224B594B5F4261646765335F56616C223A312C224B594B5F457870223A302C224B594B5F4C76223A312C224B594B5F4E6578744C76457870223A3130302C224B594B5F504D5F57696E73223A302C224B594B5F57696E436861696E4D6178223A302C224B594B5F57696E436861696E4E6F77223A302C224C454F5F426164676531223A323130332C224C454F5F4261646765315F56616C223A392C224C454F5F426164676532223A3530343030302C224C454F5F4261646765325F56616C223A302C224C454F5F426164676533223A3530313030302C224C454F5F4261646765335F56616C223A312C224C454F5F457870223A302C224C454F5F4C76223A312C224C454F5F4E6578744C76457870223A3130302C224C454F5F504D5F57696E73223A302C224C454F5F57696E436861696E4D6178223A302C224C454F5F57696E436861696E4E6F77223A302C224C6F62627952616E6B223A392C224C6F6262795475746F7269616C223A312C224D41595F426164676531223A323130332C224D41595F4261646765315F56616C223A392C224D41595F426164676532223A3530343030302C224D41595F4261646765325F56616C223A302C224D41595F426164676533223A3530313030302C224D41595F4261646765335F56616C223A312C224D41595F457870223A302C224D41595F4C76223A312C224D41595F4E6578744C76457870223A3130302C224D41595F504D5F57696E73223A302C224D41595F57696E436861696E4D6178223A302C224D41595F57696E436861696E4E6F77223A302C224D4C4C5F426164676531223A323130332C224D4C4C5F4261646765315F56616C223A392C224D4C4C5F426164676532223A3530343030302C224D4C4C5F4261646765325F56616C223A302C224D4C4C5F426164676533223A3530313030302C224D4C4C5F4261646765335F56616C223A312C224D4C4C5F457870223A302C224D4C4C5F4C76223A312C224D4C4C5F4E6578744C76457870223A3130302C224D4C4C5F504D5F57696E73223A302C224D4C4C5F57696E436861696E4D6178223A302C224D4C4C5F57696E436861696E4E6F77223A302C224D61784C6F62627952616E6B223A392C224D6178566970537461747573223A322C224D79526F6F6D48696464656E223A302C224E41475F426164676531223A323130332C224E41475F4261646765315F56616C223A392C224E41475F426164676532223A3530343030302C224E41475F4261646765325F56616C223A302C224E41475F426164676533223A3530313030302C224E41475F4261646765335F56616C223A312C224E41475F457870223A302C224E41475F4C76223A312C224E41475F4E6578744C76457870223A3130302C224E41475F504D5F57696E73223A302C224E41475F57696E436861696E4D6178223A302C224E41475F57696E436861696E4E6F77223A302C224E616D6541757261223A302C224E616D65417572615465726D223A302C224E69636B4E616D65223A22474720506C61796572222C224E6F74426567696E6E6572223A302C224F6E6C696E6543686561745074223A35302C224F6E6C696E654944223A22313130303030313030303265393565222C22504F545F426164676531223A323130332C22504F545F4261646765315F56616C223A392C22504F545F426164676532223A3530343030302C22504F545F4261646765325F56616C223A302C22504F545F426164676533223A3530313030302C22504F545F4261646765335F56616C223A312C22504F545F457870223A302C22504F545F4C76223A312C22504F545F4E6578744C76457870223A3130302C22504F545F504D5F57696E73223A302C22504F545F57696E436861696E4D6178223A302C22504F545F57696E436861696E4E6F77223A302C22506C617956657273696F6E223A3130322C22506C6179657257696E436861696E4D6178223A3131382C22506C6179657257696E436861696E4E6F77223A31302C22507265764C6F62627952616E6B223A392C2250726576566970537461747573223A322C225075626C6963436F6D6D656E74223A22476F6F64206C75636B21222C2252414D5F426164676531223A323130332C2252414D5F4261646765315F56616C223A392C2252414D5F426164676532223A3530343030322C2252414D5F4261646765325F56616C223A3132382C2252414D5F426164676533223A3530313030332C2252414D5F4261646765335F56616C223A3433392C2252414D5F457870223A353331353339302C2252414D5F4C76223A3433392C2252414D5F4E6578744C76457870223A353332323530302C2252414D5F504D5F57696E73223A302C2252414D5F57696E436861696E4D6178223A35362C2252414D5F57696E436861696E4E6F77223A31322C2252616E6B436865636B4D61746368223A302C2252616E6B436865636B5074223A302C2252616E6B436865636B54657374223A372C22534F4C5F426164676531223A323130332C22534F4C5F4261646765315F56616C223A392C22534F4C5F426164676532223A3530343030302C22534F4C5F4261646765325F56616C223A302C22534F4C5F426164676533223A3530313030302C22534F4C5F4261646765335F56616C223A312C22534F4C5F457870223A302C22534F4C5F4C76223A312C22534F4C5F4E6578744C76457870223A3130302C22534F4C5F504D5F57696E73223A302C22534F4C5F57696E436861696E4D6178223A302C22534F4C5F57696E436861696E4E6F77223A302C2253656C65637442474D223A302C2253656C6563744368617261223A302C2253656C6563744368617261436F6C6F72223A302C2253656C6563745374616765223A302C22546F74616C506C617954696D65223A33303938393438312C22546F74616C52616E6B4D61746368223A323032302C225570646174655F446179223A31332C225570646174655F486F7572223A31342C225570646174655F4D696E223A31322C225570646174655F4D6F6E7468223A322C225570646174655F59656172223A323032322C22557365724944223A3232303132303031303832323138393937392C22566970436865636B4D61746368223A302C22566970436865636B5074223A302C22566970537461747573223A322C22576F726C64446F6C6C6172223A3430393430302C22576F726C64446F6C6C6172546F74616C223A3530323030302C225A41545F426164676531223A323130332C225A41545F4261646765315F56616C223A392C225A41545F426164676532223A3530343030302C225A41545F4261646765325F56616C223A302C225A41545F426164676533223A3530313030302C225A41545F4261646765335F56616C223A312C225A41545F457870223A302C225A41545F4C76223A312C225A41545F4E6578744C76457870223A3130302C225A41545F504D5F57696E73223A302C225A41545F57696E436861696E4D6178223A302C225A41545F57696E436861696E4E6F77223A307D").unwrap();
+        expect_test::expect_file!["../test_data/vip_response.txt"].assert_debug_eq(&response);
     }
 }
