@@ -11,6 +11,10 @@ use std::marker::PhantomData;
 // Reexport the functions and structs from requests.rs and parameters.rs
 pub use requests::*;
 
+/// The current version used for API requests. Can be changed if necessary after a game update with
+/// `QueryParameters::api_version`
+pub const API_VERSION: &str = "0.1.1";
+
 /// Player information associated with a match
 #[derive(Derivative, Clone, Debug, PartialOrd, Ord)]
 #[cfg_attr(
@@ -335,6 +339,7 @@ pub struct QueryParameters<Char1Status, Char2Status, WinnerStatus, MinFloorStatu
     pub(crate) char_1: Option<Character>,
     pub(crate) char_2: Option<Character>,
     pub(crate) winner: Option<Winner>,
+    pub(crate) api_version: Option<String>,
     phantom1: PhantomData<Char1Status>,
     phantom2: PhantomData<Char2Status>,
     phantom3: PhantomData<WinnerStatus>,
@@ -352,6 +357,29 @@ impl Default
             char_1: None,
             char_2: None,
             winner: None,
+            api_version: None,
+            phantom1: PhantomData,
+            phantom2: PhantomData,
+            phantom3: PhantomData,
+            phantom4: PhantomData,
+            phantom5: PhantomData,
+        }
+    }
+}
+
+impl<A, B, C, D, E> QueryParameters<A, B, C, D, E> {
+    /// Set the version used to make API requests. Normally you should not need to change this but after a
+    /// game update this provides a way to manually update the version until this crate can be updated.
+    ///
+    /// Default: ggst_api::API_VERSION
+    pub fn api_version(self, api_version: impl Into<String>) -> QueryParameters<A, B, C, D, E> {
+        QueryParameters {
+            min_floor: self.min_floor,
+            max_floor: self.max_floor,
+            char_1: self.char_1,
+            char_2: self.char_2,
+            winner: self.winner,
+            api_version: Some(api_version.into()),
             phantom1: PhantomData,
             phantom2: PhantomData,
             phantom3: PhantomData,
@@ -370,6 +398,7 @@ impl<A, B, C, E> QueryParameters<A, B, C, NoMinFloorSet, E> {
             char_1: self.char_1,
             char_2: self.char_2,
             winner: self.winner,
+            api_version: self.api_version,
             phantom1: PhantomData,
             phantom2: PhantomData,
             phantom3: PhantomData,
@@ -388,6 +417,7 @@ impl<A, B, C, D> QueryParameters<A, B, C, D, NoMaxFloorSet> {
             char_1: self.char_1,
             char_2: self.char_2,
             winner: self.winner,
+            api_version: self.api_version,
             phantom1: PhantomData,
             phantom2: PhantomData,
             phantom3: PhantomData,
@@ -406,6 +436,7 @@ impl<B, C, D, E> QueryParameters<NoChar1Set, B, C, D, E> {
             char_1: Some(character),
             char_2: self.char_2,
             winner: self.winner,
+            api_version: self.api_version,
             phantom1: PhantomData,
             phantom2: PhantomData,
             phantom3: PhantomData,
@@ -424,6 +455,7 @@ impl<C, D, E> QueryParameters<Char1Set, NoChar2Set, C, D, E> {
             char_1: self.char_1,
             char_2: Some(character),
             winner: self.winner,
+            api_version: self.api_version,
             phantom1: PhantomData,
             phantom2: PhantomData,
             phantom3: PhantomData,
@@ -442,6 +474,7 @@ impl<B, D, E> QueryParameters<Char1Set, B, NoWinnerSet, D, E> {
             char_1: self.char_1,
             char_2: self.char_2,
             winner: Some(winner),
+            api_version: self.api_version,
             phantom1: PhantomData,
             phantom2: PhantomData,
             phantom3: PhantomData,
@@ -485,7 +518,7 @@ mod test {
     async fn query_replays() {
         use crate::*;
         let ctx = Context::default();
-        let n_pages = 100;
+        let n_pages = 10;
         let n_replays_per_page = 127;
         let (replays, errors) = get_replays(
             &ctx,

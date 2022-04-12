@@ -77,6 +77,12 @@ pub async fn get_replays<A, B, C, D, E>(
     // Assume at most 10 replays per page for pre allocation
     let mut matches = BTreeSet::new();
     let mut errors = vec![];
+
+    let version = request_parameters
+        .api_version
+        .as_deref()
+        .unwrap_or(API_VERSION);
+
     for i in 0..pages {
         // Construct the query string
         let request = messagepack::ReplayRequest {
@@ -84,7 +90,7 @@ pub async fn get_replays<A, B, C, D, E>(
                 player_id: "211027113123008384".into(),
                 string2: "61a5ed4f461c2".into(),
                 int1: 2,
-                version: "0.1.0".into(),
+                version: version.into(),
                 platform: messagepack::Platform::PC,
             },
             body: messagepack::RequestBody {
@@ -123,10 +129,23 @@ where
         .send()
         .await?;
 
+    dbg!(&response.headers(), response.status());
+
     // Convert the response to raw bytes
     let bytes = response.bytes().await?;
-    Ok(rmp_serde::decode::from_slice(&bytes)
-        .map_err(|e| ParseError::new(show_buf(&bytes), e.into())))
+    Ok(rmp_serde::decode::from_slice(&bytes).map_err(|e| {
+        match rmp_serde::decode::from_slice::<messagepack::Response<messagepack::ErrorBody>>(&bytes)
+        {
+            Ok(response) => {
+                if response.header.status_code != 0 {
+                    ParseError::new(show_buf(&bytes), Error::ApiError(format!("{:?}", response)))
+                } else {
+                    ParseError::new(show_buf(&bytes), e.into())
+                }
+            }
+            Err(e) => ParseError::new(show_buf(&bytes), e.into()),
+        }
+    }))
 }
 
 fn parse_response(
@@ -268,6 +287,12 @@ mod messagepack {
         pub body: T,
     }
 
+    #[derive(Debug, Clone, Deserialize, Serialize)]
+    #[serde(crate = "serde_crate")]
+    pub struct ErrorBody {
+        pub code: UnknownInteger,
+    }
+
     #[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
     #[serde(crate = "serde_crate")]
     pub struct Platform(u8);
@@ -378,7 +403,8 @@ mod messagepack {
     #[serde(crate = "serde_crate")]
     pub struct ResponseHeader {
         pub id: String,
-        pub int1: UnknownInteger,
+        /// Seems to be 0 for successful responses
+        pub status_code: UnknownInteger,
         pub date: String,
         pub version1: String,
         pub version2: String,
@@ -689,6 +715,16 @@ mod tests {
             .map_err(|err| err.to_string());
 
         expect_test::expect_file!["../test_data/replay_response_4.txt"].assert_debug_eq(&result);
+    }
+
+    #[test]
+    fn test_parse_response_5() {
+        // A response received when an old version were sent in the request
+        const RESPONSE: &[u8] = b"\x92\x98\xad6255e00334a82\x01\xb32022/04/12 20:24:35\xa50.1.1\xa50.0.2\xa50.0.2\xa0\xa0\x91\x05";
+
+        let result = rmp_serde::decode::from_slice::<messagepack::ReplayResponse>(&RESPONSE);
+
+        expect_test::expect_file!["../test_data/replay_response_5.txt"].assert_debug_eq(&result);
     }
 
     #[test]
