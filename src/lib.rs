@@ -137,6 +137,7 @@ pub enum Character {
     Jacko,
     HappyChaos,
     Baiken,
+    Testament,
 }
 
 impl fmt::Display for Character {
@@ -161,6 +162,7 @@ impl fmt::Display for Character {
             Character::Jacko => write!(f, "Jack-o"),
             Character::HappyChaos => write!(f, "Happy Chaos"),
             Character::Baiken => write!(f, "Baiken"),
+            Character::Testament => write!(f, "Testament"),
         }
     }
 }
@@ -192,6 +194,7 @@ impl Character {
             0x10 => Ok(Character::Jacko),
             0x11 => Ok(Character::HappyChaos),
             0x12 => Ok(Character::Baiken),
+            0x13 => Ok(Character::Testament),
             _ => Err(Error::InvalidArgument(format!(
                 "{:x} is not a valid character code",
                 c
@@ -225,6 +228,7 @@ impl Character {
             Character::Jacko => 0x10,
             Character::HappyChaos => 0x11,
             Character::Baiken => 0x12,
+            Character::Testament => 0x13,
         }
     }
 }
