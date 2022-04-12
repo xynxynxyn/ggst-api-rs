@@ -2,7 +2,7 @@ Ok(
     Response {
         header: ResponseHeader {
             id: "61ffa6c3dce48",
-            int1: 0,
+            status_code: 0,
             date: "2022/02/06 10:45:23",
             version1: "0.1.0",
             version2: "0.0.2",

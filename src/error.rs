@@ -11,6 +11,7 @@ pub enum Error {
     InvalidCharacterCode(&'static str),
     InvalidArgument(String),
     InvalidMessagePack(rmp_serde::decode::Error),
+    ApiError(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -27,6 +28,11 @@ impl fmt::Display for Error {
             Error::InvalidCharacterCode(code) => write!(f, "{} is not valid character code", code),
             Error::InvalidArgument(msg) => write!(f, "Invalid argument: {}", msg),
             Error::InvalidMessagePack(msg) => write!(f, "Invalid messagepack: {}", msg),
+            Error::ApiError(msg) => write!(
+                f,
+                "API error: {}. Maybe try updating the version in the request?",
+                msg
+            ),
         }
     }
 }
